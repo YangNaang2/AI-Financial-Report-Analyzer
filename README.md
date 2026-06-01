@@ -1,12 +1,17 @@
-# 📈 AI 기반 증권사 리포트 '숨은 매도 시그널' 탐지 파이프라인
+# 📈 AI 기반 증권사 리포트 '숨은 매도 시그널' 탐지하기
 
 ![Python](https://img.shields.io/badge/Python-3.12-blue.svg)
 ![PyTorch](https://img.shields.io/badge/PyTorch-EE4C2C?logo=pytorch&logoColor=white)
 ![HuggingFace](https://img.shields.io/badge/Transformers-FFD21E?logo=huggingface&logoColor=black)
 
+## 📌 프로젝트 동기
+증권사의 리포트를 읽는 것이 취미이다. 하지만 근래 금융/증권에 대한 높아진 관심을 바탕으로 매도 리포트, 혹은 애널리스트의 소신을 밝히는 보고서가 많이 줄어든 추세이다.
+[슈카월드 "비판의 종말" ](https://youtu.be/E5Ue34SvIcw?si=iub3zFq9MFhaagnV)
+그렇다면 보고서 내에 숨겨즌 뜻, 애널리스트가 하고싶은 말을 찾는 것은 독자의 몫이다.
+
 ## 📌 프로젝트 소개
-증권사 리포트의 텍스트(비정형 데이터)를 분석하여, 명시적인 투자의견(Buy/Hold) 이면에 숨겨진 **'실질적 매도(Negative) 시그널'을 탐지하는 자연어 처리(NLP) 파이프라인**입니다. 
-웹 크롤링을 통한 원시 데이터 수집부터 PDF 텍스트 전처리, 주가 데이터를 활용한 자동 라벨링, 그리고 금융 특화 언어모델(KoFinBERT) 파인튜닝까지 전 과정을 엔드투엔드(End-to-End)로 자동화했습니다.
+증권사 리포트의 텍스트(비정형 데이터)를 분석하여, 명시적인 투자의견(Buy/Hold) 이면에 숨겨진 **'실질적 매도(Negative) 시그널'을 탐지하는 자연어 처리(NLP) 파이프라인**이다. 
+웹 크롤링을 통한 원시 데이터 수집부터 PDF 텍스트 전처리, 주가 데이터를 활용한 자동 라벨링, 그리고 금융 특화 언어모델(KoFinBERT) 파인튜닝까지 전 과정을 엔드투엔드(End-to-End)로 자동화했다.
 
 ## ⚙️ 파이프라인 (Data Pipeline)
 
