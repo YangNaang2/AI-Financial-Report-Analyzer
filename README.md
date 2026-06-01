@@ -70,7 +70,7 @@ python crawler.py
 # 2. 데이터 정제, 라벨링 및 모델 학습 (Model 생성)
 python main.py
 
-# 3. 최신 모델을 활용한 문장 추론 테스트
+# 3. 최신 모델을 활용한 문장 추론 테스트(터미널용) (파일 내에 원하는 문장 입력 후)
 python inference.py
 
 # 4. 🌐 Streamlit 웹 대시보드 실행 (GUI)
