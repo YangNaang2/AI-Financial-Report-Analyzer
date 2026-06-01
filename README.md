@@ -25,6 +25,20 @@
 5. **실전 추론 (`inference.py`)**
    * 저장된 최신 모델을 로드하여 새로운 문장에 대한 숨은 매도 시그널 확률 추론
 
+## 📂 디렉토리 구조 (Directory Structure)
+```text
+📦 AI-Financial-Report-Analyzer
+ ┣ 📜 crawler.py           # 리포트 다운로드 크롤러
+ ┣ 📜 data_processor.py    # PDF 텍스트 추출 및 정제 모듈
+ ┣ 📜 labeler.py           # 주가 연동 및 수익률 기반 라벨링 모듈
+ ┣ 📜 train.py             # KoFinBERT 파인튜닝 모듈
+ ┣ 📜 main.py              # 전체 파이프라인 통합 및 실행
+ ┣ 📜 inference.py         # 최신 모델 자동 로드 및 텍스트 추론
+ ┣ 📜 .gitignore           # 대용량 모델 및 캐시 파일 업로드 방지
+ ┗ 📂 pdf_data/            # (Local) 크롤링된 원본 PDF 파일
+ ┗ 📂 models/              # (Local) 학습 완료된 AI 모델 가중치
+```
+
 ## 🛠️ 기술 스택 (Tech Stack)
 * **언어:** Python
 * **데이터 수집 및 가공:** `requests`, `BeautifulSoup4`, `pdfplumber`, `re` (Regex)
@@ -38,6 +52,7 @@
 pip install requests beautifulsoup4 pdfplumber finance-datareader pandas torch transformers
 
 **2. 파이프라인 가동**
+'''bash
 # 1. 학습용 과거 리포트 PDF 수집
 python crawler.py
 
@@ -46,18 +61,4 @@ python main.py
 
 # 3. 최신 모델을 활용한 문장 추론 테스트
 python inference.py
-```
-
-## 📂 디렉토리 구조 (Directory Structure)
-```text
-📦 AI-Financial-Report-Analyzer
- ┣ 📜 crawler.py           # 리포트 다운로드 크롤러
- ┣ 📜 data_processor.py    # PDF 텍스트 추출 및 정제 모듈
- ┣ 📜 labeler.py           # 주가 연동 및 수익률 기반 라벨링 모듈
- ┣ 📜 train.py             # KoFinBERT 파인튜닝 모듈
- ┣ 📜 main.py              # 전체 파이프라인 통합 및 실행
- ┣ 📜 inference.py         # 최신 모델 자동 로드 및 텍스트 추론
- ┣ 📜 .gitignore           # 대용량 모델 및 캐시 파일 업로드 방지
- ┗ 📂 pdf_data/            # (Local) 크롤링된 원본 PDF 파일
- ┗ 📂 models/              # (Local) 학습 완료된 AI 모델 가중치
 ```
