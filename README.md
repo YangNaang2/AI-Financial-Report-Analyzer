@@ -6,9 +6,12 @@
 ![Streamlit](https://img.shields.io/badge/Streamlit-FF4B4B?logo=streamlit&logoColor=white)
 
 ## 👨‍💻 프로젝트 동기
+
 <div align="center">
-**"목표 주가는 하향하지만, 투자의견은 매수를 유지합니다."**  
+  <strong>"목표 주가는 하향하지만, 투자의견은 매수를 유지합니다."</strong>
 </div>
+<br>
+
 투자를 좋아하기에 직접 공부도 하고 투자를 하는 과정에 있어서 여러 증권사의 리포트를 필연적으로 읽게 된다.  
 이때 많이 접하게 되는 문장이다.  
 최근 금융 시장에 대한 대중의 관심이 매우 높아졌다.   
