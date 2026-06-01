@@ -73,12 +73,12 @@ python main.py
 # 3. 최신 모델을 활용한 문장 추론 테스트(터미널용) (파일 내에 원하는 문장 입력 후)
 python inference.py
 
-<img width="588" height="90" alt="Image" src="https://github.com/user-attachments/assets/3c9b1d15-3355-4605-bb67-d4ac1d68c87f" />
-
-
-<img width="959" height="692" alt="Image" src="https://github.com/user-attachments/assets/b4097d2b-55ec-4faa-b93a-a1e08152ab06" />
-
 # 4. 🌐 Streamlit 웹 대시보드 실행 (GUI)
 streamlit run app.py
 
 ```
+
+<img width="588" height="90" alt="Image" src="https://github.com/user-attachments/assets/3c9b1d15-3355-4605-bb67-d4ac1d68c87f" />
+
+
+<img width="959" height="692" alt="Image" src="https://github.com/user-attachments/assets/b4097d2b-55ec-4faa-b93a-a1e08152ab06" />
