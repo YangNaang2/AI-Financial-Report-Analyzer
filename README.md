@@ -38,7 +38,6 @@
 pip install requests beautifulsoup4 pdfplumber finance-datareader pandas torch transformers
 
 **2. 파이프라인 가동**
-```bash
 # 1. 학습용 과거 리포트 PDF 수집
 python crawler.py
 
