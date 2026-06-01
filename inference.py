@@ -44,7 +44,7 @@ if __name__ == "__main__":
     my_model_path = get_latest_model_path()
     print(f"📂 로드된 최신 모델 경로: {my_model_path}\n")
     
-    test_sentence = "최근 메모리 반도체 수요 부진으로 인해 실적 추정치를 하향 조정합니다."
+    test_sentence = "최근 메모리 반도체 수요 폭등으로 인해 실적 추정치를 초상향합니다."
     label, conf = predict_hidden_sell_signal(test_sentence, model_path=my_model_path)
     
     print(f"▶ AI 판독 결과: {label} (확률: {conf:.1f}%)")
