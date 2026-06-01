@@ -39,20 +39,14 @@
  ┗ 📂 models/              # (Local) 학습 완료된 AI 모델 가중치
 ```
 
-## 🛠️ 기술 스택 (Tech Stack)
-* **언어:** Python
-* **데이터 수집 및 가공:** `requests`, `BeautifulSoup4`, `pdfplumber`, `re` (Regex)
-* **금융 데이터 연동:** `FinanceDataReader`, `pandas`
-* **AI / Deep Learning:** `torch`, `transformers` (Hugging Face)
-
 ## 🚀 실행 방법 (Getting Started)
 
 **1. 패키지 설치**
 ```bash
 pip install requests beautifulsoup4 pdfplumber finance-datareader pandas torch transformers
-
+```
 **2. 파이프라인 가동**
-'''bash
+
 # 1. 학습용 과거 리포트 PDF 수집
 python crawler.py
 
