@@ -13,7 +13,7 @@
     <img src="https://img.youtube.com/vi/E5Ue34SvIcw/maxresdefault.jpg" width="60%" alt="슈카월드 비판의 종말">
   </a>
   <br>
-  <em>▲ 슈카월드 "비판의 종말" (이미지 클릭 시 영상 재생)</em>
+  <em>▲ 슈카월드 "비판의 종말" (Ctrl+이미지 클릭 시 영상 재생)</em>
 </p>
 <p align="center">
   <img src="https://github.com/user-attachments/assets/d736a030-ab0d-49d9-98c8-e6d61c6a7107" width="49%" />
