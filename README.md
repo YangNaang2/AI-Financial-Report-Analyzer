@@ -78,7 +78,31 @@ streamlit run app.py
 
 ```
 
-<img width="588" height="90" alt="Image" src="https://github.com/user-attachments/assets/3c9b1d15-3355-4605-bb67-d4ac1d68c87f" />
+## 📊 실험 결과 (Results)
 
+터미널(CLI) 환경에서의 추론 결과와, Streamlit을 활용한 웹 GUI 환경에서의 테스트 결과입니다. 구축된 파이프라인을 통해 문장의 행간에 숨겨진 긍정/부정(매도) 확률을 성공적으로 계산해 냅니다.
 
-<img width="959" height="692" alt="Image" src="https://github.com/user-attachments/assets/b4097d2b-55ec-4faa-b93a-a1e08152ab06" />
+<p align="center">
+  <img src="https://github.com/user-attachments/assets/3c9b1d15-3355-4605-bb67-d4ac1d68c87f" width="80%" />
+  <br>
+  <em>▲ 1. 백엔드(Terminal) 환경에서의 파이프라인 추론 결과</em>
+</p>
+
+<p align="center">
+  <img src="https://github.com/user-attachments/assets/b4097d2b-55ec-4faa-b93a-a1e08152ab06" width="90%" />
+  <br>
+  <em>▲ 2. Streamlit을 활용한 사용자 친화적 웹 대시보드(GUI) 시연</em>
+</p>
+
+## 🎯 최종 결론 및 성능 향상 가이드 (Conclusion & Next Steps)
+
+현재 깃허브에 업로드된 파이프라인은 시스템 검증을 위해 소량의 데이터로 학습된 베이스라인 모델입니다. 한국 증권사 리포트 특성상 '부정적(매도)' 데이터가 극히 적은 **클래스 불균형(Class Imbalance)** 문제가 존재합니다. 
+
+실제 퀀트 트레이딩 수준의 **초고도화된 정확도**를 얻기 위해서는 다음의 튜닝 과정을 거치면 됩니다.
+
+1. **데이터 볼륨 압도적 확대 (수집량 증가)**
+   * `crawler.py`의 다운로드 페이지 범위를 대폭 늘려(예: `start_page=1, end_page=200`) 수천 건 이상의 리포트를 수집합니다. 이를 통해 희귀한 '숨은 매도' 라벨 데이터를 충분히 확보할 수 있습니다.
+2. **모델 학습 반복 횟수(Epoch) 증가**
+   * 데이터가 많아진 만큼, `train.py` 내부의 학습 파라미터(예: `num_train_epochs`)를 3~5 이상으로 늘려 AI가 금융 텍스트의 미세한 뉘앙스 차이를 더 깊게 학습하도록 유도합니다.
+3. **학습 데이터 밸런싱**
+   * 수집된 데이터 중 긍정(0)과 부정(1) 데이터의 비율을 인위적으로 1:1에 가깝게 맞춰주면(Under-sampling 등), AI가 '모르면 일단 유지/매수라고 찍는' 현상을 방지할 수 있습니다.
