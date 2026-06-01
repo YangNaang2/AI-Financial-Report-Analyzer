@@ -1,0 +1,13 @@
+# 1. 파이썬 기본 캐시 파일
+__pycache__/
+*.py[cod]
+
+# 2. 가상환경 및 주피터 노트북
+.ipynb_checkpoints/
+.env
+
+# 3. 대용량 데이터 및 모델
+pdf_data/
+models/
+results/
+my_finbert_model/
