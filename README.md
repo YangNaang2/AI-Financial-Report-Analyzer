@@ -6,12 +6,21 @@
 
 ## 📌 프로젝트 동기
 증권사의 리포트를 읽는 것이 취미이다. 하지만 근래 금융/증권에 대한 높아진 관심을 바탕으로 매도 리포트, 혹은 애널리스트의 소신을 밝히는 보고서가 많이 줄어든 추세이다.
-<img width="2340" height="1080" alt="Image" src="https://github.com/user-attachments/assets/d736a030-ab0d-49d9-98c8-e6d61c6a7107" />
 
-<img width="2340" height="1080" alt="Image" src="https://github.com/user-attachments/assets/f14b42de-e728-44af-ac98-eb82f4070764" />
-[슈카월드 "비판의 종말" ](https://youtu.be/E5Ue34SvIcw?si=iub3zFq9MFhaagnV)
+<p align="center">
+  <img src="https://github.com/user-attachments/assets/d736a030-ab0d-49d9-98c8-e6d61c6a7107" width="49%" />
+  <img src="https://github.com/user-attachments/assets/f14b42de-e728-44af-ac98-eb82f4070764" width="49%" />
+</p>
 
-그렇다면 보고서 내에 숨겨즌 뜻, 애널리스트가 하고싶은 말을 찾는 것은 독자의 몫이다.
+<p align="center">
+  <a href="https://youtu.be/E5Ue34SvIcw?si=iub3zFq9MFhaagnV">
+    <img src="https://img.youtube.com/vi/E5Ue34SvIcw/maxresdefault.jpg" width="80%" alt="슈카월드 비판의 종말">
+  </a>
+  <br>
+  <em>▲ 슈카월드 "비판의 종말" (이미지 클릭 시 영상 재생)</em>
+</p>
+
+그렇다면 보고서 내에 숨겨진 뜻, 애널리스트가 하고싶은 말을 찾는 것은 독자의 몫이다.
 
 ## 📌 프로젝트 소개
 증권사 리포트의 텍스트(비정형 데이터)를 분석하여, 명시적인 투자의견(Buy/Hold) 이면에 숨겨진 **'실질적 매도(Negative) 시그널'을 탐지하는 자연어 처리(NLP) 파이프라인**이다. 
