@@ -72,4 +72,8 @@ python main.py
 
 # 3. 최신 모델을 활용한 문장 추론 테스트
 python inference.py
+
+# 4. 🌐 Streamlit 웹 대시보드 실행 (GUI)
+streamlit run app.py
+
 ```
