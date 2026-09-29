@@ -16,7 +16,7 @@ from uuid import uuid4
 
 SCHEMA_VERSION = 1
 MAX_TEXT_CHARS = 2_000_000
-MAX_BACKUP_BYTES = 64 * 1024 * 1024
+MAX_BACKUP_BYTES = 20 * 1024 * 1024
 MAX_DOCUMENTS = 2000
 MAX_ANALYSES = 10000
 _RESERVED = {"id", "owner", "favorite", "note", "tags", "created_at", "updated_at"}
@@ -526,16 +526,16 @@ class Library:
         payload = _dump({"format": "report-lens", "schema_version": SCHEMA_VERSION, "exported_at": _now(),
                          "documents": documents, "analyses": analyses})
         if len(documents) > MAX_DOCUMENTS or len(analyses) > MAX_ANALYSES or len(payload.encode("utf-8")) > MAX_BACKUP_BYTES:
-            raise LibraryError("전체 백업이 한도(64MB, 문서 2,000건, 분석 10,000건)를 넘었습니다. 개별 분석 JSON을 내보내 보관함을 정리해 주세요.")
+            raise LibraryError("전체 백업이 한도(20MB, 문서 2,000건, 분석 10,000건)를 넘었습니다. 개별 분석 JSON을 내보내 보관함을 정리해 주세요.")
         return payload
 
     def import_backup(self, owner, payload):
         owner = _owner(owner)
         if not isinstance(payload, str):
-            raise LibraryError("JSON 백업은 UTF-8 텍스트 64MB 이하여야 합니다.")
+            raise LibraryError("JSON 백업은 UTF-8 텍스트 20MB 이하여야 합니다.")
         _text(payload, "JSON 백업", MAX_BACKUP_BYTES, empty=True)
         if len(payload.encode("utf-8")) > MAX_BACKUP_BYTES:
-            raise LibraryError("JSON 백업은 UTF-8 텍스트 64MB 이하여야 합니다.")
+            raise LibraryError("JSON 백업은 UTF-8 텍스트 20MB 이하여야 합니다.")
         backup = _load(payload)
         if (not isinstance(backup, dict) or backup.get("format") != "report-lens" or
                 type(backup.get("schema_version")) is not int or backup["schema_version"] != SCHEMA_VERSION):
