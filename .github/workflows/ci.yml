@@ -1,0 +1,28 @@
+name: Tests
+on:
+  push:
+    branches: [main, 'upgrade/**']
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  offline-tests:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ['3.12', '3.13']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+      - run: python -m pip install -r requirements-dev.txt
+      - name: Unit, integration, and Streamlit UI tests without downloaded models
+        env:
+          HF_HUB_OFFLINE: '1'
+          TRANSFORMERS_OFFLINE: '1'
+        run: python -m pytest -q
+      - run: python -m compileall -q app.py crawler.py data_processor.py inference.py labeler.py train.py main.py storage.py exports.py jobs.py demo.py presentation.py
+      - name: CLI help
+        run: python main.py --help

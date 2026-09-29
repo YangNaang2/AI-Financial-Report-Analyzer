@@ -11,3 +11,26 @@ pdf_data/
 models/
 results/
 my_finbert_model/
+# Report Lens private runtime data
+.venv/
+__pycache__/
+.pytest_cache/
+.coverage
+htmlcov/
+data/
+models/
+exports/
+work/
+*.sqlite*
+*.db
+*.db-*
+*.safetensors
+*.bin
+*.pt
+*.pth
+*.pkl
+*.joblib
+.env
+.streamlit/secrets.toml
+*.pdf
+# Existing research examples remain tracked; do not add new user PDFs.
