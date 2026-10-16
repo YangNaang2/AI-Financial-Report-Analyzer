@@ -4,7 +4,7 @@
 
 [![Tests](https://github.com/YangNaang2/AI-Financial-Report-Analyzer/actions/workflows/ci.yml/badge.svg)](https://github.com/YangNaang2/AI-Financial-Report-Analyzer/actions/workflows/ci.yml)
 
-기존 AI-Financial-Report-Analyzer를 실제 문서 검토 흐름으로 확장했습니다. 모델이 없어도 텍스트/PDF 추출, 표현 탐지, 원문 확인, 보고서 비교, 보관함과 내보내기를 사용할 수 있습니다. 가상 데모는 실제 기록과 분리됩니다.
+기존 AI-Financial-Report-Analyzer를 실제 문서 검토 흐름으로 확장했습니다. 모델이 없어도 텍스트/PDF 추출, 표현 탐지, 원문 확인, 보고서 비교, 보관함과 내보내기를 사용할 수 있습니다. 공개 리포트를 매일 수집하면 종목별 목표주가 컨센서스, 상승여력, 목표가 상향·하향 알림을 원문 페이지 근거와 함께 볼 수 있습니다. 가상 데모는 실제 기록과 분리됩니다.
 
 ![가상 데모 대시보드](docs/dashboard.png)
 
@@ -39,16 +39,39 @@ python -m streamlit run app.py
 
 | 화면 | 실제 동작 |
 |---|---|
-| 대시보드 | 최근 분석, 보관 문서, 기업별 기록, 완료 모델 상태 |
+| 대시보드 | 수집 리포트의 새 변화(목표가 상향·하향, 투자의견 변경, 커버리지 개시)와 NEW 표시, 최근 분석, 보관 문서, 기업별 기록, 완료 모델 상태 |
 | 리포트 분석 | 텍스트, 단일·다중 PDF(최대 5개), 추출 미리보기, 메타데이터 확인·수정, 백그라운드 분석·저장 |
 | 분석 상세 | 구간 점수, 페이지별 차트, 원문 페이지 이동·강조, 발췌 요약, 단위·출처가 있는 수치, 분석 범위·미처리 구간 |
 | 리포트 비교 | 같은 기업의 시점·증권사별 의견/목표주가/표현 변화, 원문 근거, 호환 모델 설정에서만 점수 차이 |
+| 종목 컨센서스 | 관심 종목, 증권사별 목표주가와 현재가의 거리(상승여력), 목표주가 이력과 발간일 종가 대비 차이, 종목 한눈에 보기 |
 | 분석 보관함 | 검색·증권사/방식/즐겨찾기 필터, 메모·태그, 문서 삭제, CSV/JSON/HTML, 공간 백업·병합 복구 |
 | 데이터 · 모델 | 공개 리포트 수집, 관측 라벨 준비, 데이터 JSON 가져오기, CPU 학습 설정, 실제 평가 지표·표본 수·모델 버전 |
 
 PDF는 파일당 20MB·100페이지 이하, 저장 가능한 추출문은 문서당 200만 자입니다. 암호화·손상·빈 문서와 스캔 문서를 구분합니다. 스캔 PDF는 OCR 필요 상태로 표시하고 빈 추출 결과를 정상 분석하지 않습니다. 메타데이터가 불분명하면 미확인으로 남기며, 사용자가 수정할 수 있습니다.
 
 원문은 페이지/문단 ID와 페이지 내 문자 오프셋을 보존합니다. 기본 256토큰/32토큰 겹침으로 전체 문서를 나눕니다. 최대 구간 제한으로 분석하지 못한 범위를 표시합니다. 목표주가·매출·이익 등을 보수적으로 추출하고 단위와 출처를 함께 저장하며, 불명확한 숫자를 환산하거나 추정하지 않습니다.
+
+## 종목 컨센서스와 매일 수집
+
+```bash
+python main.py collect --save-dir data/reports --start-page 1 --end-page 5
+python -m pip install -r requirements-data.txt   # 선택: 최신 종가
+```
+
+`data/reports`에 수집한 리포트로 **종목 컨센서스** 화면을 만듭니다. 종목코드·증권사·발간일은 네이버 목록 값을 쓰고, 목표주가·투자의견·직전 목표주가·`(하향)`/`(M)` 같은 변화 표기는 PDF 표지에서 페이지 근거와 함께 읽습니다. 처음 열 때 PDF 추출에 시간이 걸리며(약 45개에 4분), 결과는 파일 해시별로 `data/reports/consensus_cache.json`에 저장해 다음부터 바로 엽니다.
+
+- **현재가**: FinanceDataReader가 있으면 최신 종가, 없으면 리포트에 적힌 주가를 쓰고 어느 쪽인지 표시합니다.
+- **평균 목표주가**: 선택한 기간 안에서 증권사별 최신 리포트 하나씩만 평균합니다.
+- **상향·하향 판단**: 원문의 직전 목표주가 → 같은 증권사의 직전 수집 리포트 → 원문의 상향/하향 표기 순으로 근거를 찾고, 근거 종류를 함께 보여줍니다.
+- **관심 종목**: `data/reports/watchlist.json`에 저장되어 새 세션에서도 유지됩니다. 대시보드의 새 변화와 컨센서스 목록에서 먼저 표시됩니다.
+- **추출 점검**: `python audit_extraction.py --pdf-dir data/reports`가 네이버 목록 값과 비교한 일치율과 증권사별 추출률, 원문 줄을 CSV로 남깁니다.
+
+Windows에서는 `collect_daily.cmd`를 작업 스케줄러에 등록해 매일 1~5페이지를 수집하고 목표주가 캐시를 미리 만들 수 있습니다. 이미 받은 PDF는 건너뛰며 기록은 `data/collect_daily.log`에 남습니다. 작업은 로그인한 상태에서 실행되고, 특정 Python(예: 가상환경)을 쓰려면 `REPORT_LENS_PYTHON` 환경 변수에 경로를 지정합니다.
+
+```powershell
+$action = New-ScheduledTaskAction -Execute 'cmd.exe' -Argument "/c `"$PWD\collect_daily.cmd`"" -WorkingDirectory $PWD
+Register-ScheduledTask -TaskName 'ReportLens Daily Collect' -Action $action -Trigger (New-ScheduledTaskTrigger -Daily -At '18:30') -Settings (New-ScheduledTaskSettingsSet -StartWhenAvailable)
+```
 
 ## 모델 사용과 학습
 
@@ -65,17 +88,6 @@ python -m pip install -r requirements-data.txt
 python main.py collect --save-dir data/reports --start-page 1 --end-page 1
 python main.py prepare --pdf-dir data/reports --output data/dataset.json --window-days 30 --threshold -5 --entry-policy next_session
 python main.py train --records data/dataset.json --output-dir models --backend baseline
-```
-
-### 종목 컨센서스와 매일 수집
-
-`data/reports`에 수집한 리포트는 **종목 컨센서스** 화면에서 증권사별 목표주가·상승여력·목표주가 이력으로 볼 수 있습니다. 종목코드·증권사·발간일은 네이버 목록 값을, 목표주가·직전 목표주가·상향/하향 표기는 PDF 원문과 페이지 근거를 사용합니다. 추출 정확도는 `python audit_extraction.py --pdf-dir data/reports`로 점검합니다.
-
-Windows에서는 `collect_daily.cmd`를 작업 스케줄러에 등록해 매일 1~5페이지를 수집하고 목표주가 캐시를 미리 만들 수 있습니다. 기록은 `data/collect_daily.log`에 남습니다.
-
-```powershell
-$action = New-ScheduledTaskAction -Execute 'cmd.exe' -Argument "/c `"$PWD\collect_daily.cmd`"" -WorkingDirectory $PWD
-Register-ScheduledTask -TaskName 'ReportLens Daily Collect' -Action $action -Trigger (New-ScheduledTaskTrigger -Daily -At '18:30') -Settings (New-ScheduledTaskSettingsSet -StartWhenAvailable)
 ```
 
 네이버의 현재 공개 리서치 목록/상세 API를 사용하며 요청 타임아웃, 제한된 재시도, 속도 제한, PDF 확인, URL 기반 파일명, 체크섬 및 파일별 재개 기록을 남깁니다. 수집 실패는 성공으로 세지 않습니다. 원본 발행사의 이용 조건을 확인하고 보고서를 재배포하지 마세요.
@@ -101,6 +113,7 @@ python main.py train --records data/dataset.json --output-dir models --backend t
 - 각 분석에 원문 사본을 저장하므로 이후 재추출·수정에도 과거 근거가 유지됩니다.
 - 공간별 owner로 입력/결과를 분리하고 데모는 별도 메모리 DB를 사용합니다. 이 기능은 공개 서비스용 회원 인증을 대체하지 않습니다.
 - 복구 키를 안전하게 보관하세요. 키를 아는 사람은 해당 공간에 접근할 수 있습니다.
+- 수집 리포트, 관심 종목(`watchlist.json`), 목표주가 캐시는 작업 공간이 아니라 수집 폴더에 있어 이 PC에서 공유되며 공간 백업에 포함되지 않습니다.
 - 백업 JSON에는 해당 공간의 추출 원문·분석·메모가 포함되며 원본 PDF/모델은 제외됩니다. 백업 크기는 UI 업로드 한도와 같은 20MB까지입니다. 복구 전에 전체 스키마·원문 위치를 검증하고 실패하면 롤백합니다.
 - CSV는 UTF-8 BOM입니다. Excel에서 종목코드의 앞자리 `0`을 유지하려면 해당 열을 **텍스트 형식**으로 가져오세요.
 - UI 재실행은 분석/학습을 재시작하지 않습니다. 앱 프로세스가 종료되면 실행 중 작업은 중단됩니다. 이미 저장한 분석과 수집 이력은 남습니다.
@@ -114,7 +127,7 @@ python -m pytest -q
 python main.py --help
 ```
 
-GitHub Actions는 Python 3.12/3.13에서 네트워크 모델 다운로드 없이 단위·통합·Streamlit AppTest를 실행합니다. PDF 오류/원문 위치, 긴 문서 범위, 라벨 시점, 시간 분할 누수 방지, 실제 CPU 학습·추론, 저장소 격리·중복·복구, HTML/CSV 처리, 모델 없는 화면과 데모를 검사합니다.
+GitHub Actions는 Python 3.12/3.13에서 네트워크 모델 다운로드 없이 단위·통합·Streamlit AppTest를 실행합니다. PDF 오류/원문 위치, 긴 문서 범위, 라벨 시점, 시간 분할 누수 방지, 실제 CPU 학습·추론, 저장소 격리·중복·복구, HTML/CSV 처리, 실제 증권사 표지 형식의 메타데이터 추출, 컨센서스·관심 종목·변화 알림, 모델 없는 화면과 데모를 검사합니다. Windows 기본 인코딩(cp949)에서도 같은 테스트가 통과하도록 파일은 UTF-8로 명시해 읽고 씁니다.
 
 실제 브라우저 UI 검증, 기존 PDF 추출, 현재 네이버 수집·중복 재개, 선택 Transformer 검증의 결과는 [검증 기록](docs/VALIDATION.md)에 적습니다. 알고리즘·저장·동시성의 세부 정책은 [구현 노트](docs/ARCHITECTURE.md)를 참고하세요.
 
@@ -123,4 +136,6 @@ GitHub Actions는 Python 3.12/3.13에서 네트워크 모델 다운로드 없이
 - 검증된 실전 금융 모델은 포함하지 않습니다. 학습용 리포트와 가격 데이터가 충분하지 않으면 **평가 불충분**입니다. 보정된 하락 확률, 투자 권고 또는 의도 탐지 성능을 주장하지 않습니다.
 - OCR 엔진은 기본 설치에 없습니다. 별도 OCR 환경에서 검색 가능한 PDF로 변환해 입력하세요. 한국어 OCR 품질 검증은 이번 범위에 포함하지 않습니다.
 - 복잡한 표, 회계 기간, 다중 통화, 기업명 자동 추출에는 한계가 있습니다. 페이지 텍스트는 원본의 시각적 배치와 다를 수 있습니다.
+- 목표주가는 표지 규칙으로 읽습니다. 2026년 10월 수집분 점검에서 증권사 리포트 36개 중 28개(78%)를 추출했고, 첫 페이지가 차트나 깨진 글자로만 추출되는 PDF는 놓칩니다. 기술분석·IR 보고서처럼 목표주가가 없는 문서는 컨센서스에서 제외합니다.
+- 상승여력은 평균 목표주가와 현재가의 차이일 뿐이며 투자 권고나 목표가 달성 가능성을 뜻하지 않습니다.
 - GitHub 소스 반영과 웹 서비스 공개 배포는 별개입니다. 이 저장소는 로컬 실행 앱이며 공개 서비스로 배포하지 않았습니다.

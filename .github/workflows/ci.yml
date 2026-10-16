@@ -23,6 +23,6 @@ jobs:
           HF_HUB_OFFLINE: '1'
           TRANSFORMERS_OFFLINE: '1'
         run: python -m pytest -q
-      - run: python -m compileall -q app.py crawler.py data_processor.py inference.py labeler.py train.py main.py storage.py exports.py jobs.py demo.py presentation.py
+      - run: python -m compileall -q app.py crawler.py data_processor.py inference.py labeler.py train.py main.py storage.py exports.py jobs.py demo.py presentation.py consensus.py watchlist.py audit_extraction.py
       - name: CLI help
         run: python main.py --help
