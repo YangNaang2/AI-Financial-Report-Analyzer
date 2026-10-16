@@ -1,3 +1,4 @@
+from datetime import timedelta
 import json
 from pathlib import Path
 import tempfile
@@ -48,7 +49,7 @@ class ConsensusTests(unittest.TestCase):
                          {"이전": "신규", "상향": "상향", "신규": "신규", "오래됨": "신규"})
         raised = next(row for row in reports if row["title"] == "상향")
         self.assertEqual((raised["target_price"], raised["previous_target"], raised["opinion"], raised["page"]), (41000, 38000, "BUY", 1))
-        self.assertEqual({row["title"]: row["reason"] for row in skipped}, {"기술분석": "목표주가 미추출", "달러": "목표주가 단위 미확인"})
+        self.assertEqual({row["title"]: row["reason"] for row in skipped}, {"기술분석": "목표주가 없음", "달러": "목표주가 단위 미확인"})
 
     def test_stated_previous_target_and_revision_are_used_without_history(self):
         self.texts["r2.pdf"] = cover("40,000원") + "직전 목표주가 43,000원\n"
@@ -60,6 +61,36 @@ class ConsensusTests(unittest.TestCase):
         self.assertEqual((rows["오래됨"]["change"], rows["오래됨"]["previous_target"], rows["오래됨"]["change_basis"]),
                          ("하향", None, "원문 표기"))
         self.assertEqual(rows["상향"]["change_basis"], "수집 이력")
+
+    def test_listing_values_take_precedence_and_rescue_unreadable_pdfs(self):
+        manifest_path = self.directory / "collection_manifest.json"
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        manifest["reports"]["1"].update(company="대한항공", listing_target_price=41000, listing_opinion="Buy")
+        manifest["reports"]["2"].update(listing_target_price=39000, listing_opinion="중립")
+        manifest["reports"]["4"].update(company="한국비엔씨", listing_target_price=3000)
+        manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+        reports, skipped = consensus.load_reports(self.directory, extract=self.extract)
+        rows = {row["title"]: row for row in reports}
+        agreed, differs, rescued = rows["상향"], rows["신규"], rows["기술분석"]
+        self.assertEqual((agreed["target_origin"], agreed["company"], consensus.source_note(agreed)),
+                         ("네이버 목록", "대한항공", "네이버 목록 · PDF 1페이지 일치"))
+        self.assertEqual((differs["target_price"], differs["opinion"], consensus.source_note(differs)),
+                         (39000, "HOLD", "네이버 목록 (PDF 40,000원과 다름, PDF 1페이지)"))
+        self.assertEqual((rescued["target_price"], consensus.source_note(rescued)), (3000, "네이버 목록 (PDF에서 확인 못 함)"))
+        self.assertEqual(consensus.source_note(rows["이전"]), "PDF 1페이지")
+        self.assertEqual([row["title"] for row in skipped], ["달러"])
+
+    def test_gap_labels_of_nearby_reports_do_not_overlap(self):
+        def item(day, base, target):
+            return dict(row=dict(date=day, target_price=target), base=base)
+
+        items = [item("2026-10-15", 61000, 112000), item("2026-10-16", 64000, 120000), item("2026-06-01", 90000, 100000)]
+        placed = consensus._label_positions(items, timedelta(days=120), 60000)
+        self.assertEqual([side for side, _ in placed], ["left", "right", "right"])
+        self.assertEqual(placed[0][1], (61000 + 112000) / 2)
+        three = items[:2] + [item("2026-10-16", 64000, 118000)]
+        (_, first), (_, second), (_, third) = consensus._label_positions(three, timedelta(days=120), 60000)
+        self.assertGreaterEqual(abs(second - third), 60000 * 0.12)
 
     def test_extraction_is_cached_by_file_hash(self):
         consensus.load_reports(self.directory, extract=self.extract)

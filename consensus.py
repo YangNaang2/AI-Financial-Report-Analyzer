@@ -1,9 +1,10 @@
 """Ticker-level target-price consensus built from collected reports.
 
-Ticker, broker and publication date come from the Naver listing recorded in
-collection_manifest.json, which is more reliable than header parsing. Target
-price, opinion and the report's stated price come from the PDF with their
-source page. Extraction results are cached next to the manifest by file hash.
+Ticker, name, broker, date, target price and opinion come from the Naver
+listing recorded in collection_manifest.json, which is more reliable than
+header parsing. The PDF supplies the source page, the report's stated price,
+previous target and revision wording, and is the fallback for older entries
+without listing values. Extraction results are cached by file hash.
 """
 
 from collections import Counter, defaultdict
@@ -81,11 +82,12 @@ def load_reports(pdf_dir, extract=None, progress=None):
         base = dict(ticker=entry.get("ticker"), broker=entry.get("broker") or "미상",
                     date=_iso(entry.get("published_at")), title=entry.get("title") or "",
                     filename=entry["filename"], collected_at=entry.get("collected_at") or "")
-        target = _won(item.get("target_price"))
-        if item.get("error"):
-            reason = item["error"]
-        elif not target:
-            reason = "목표주가 단위 미확인" if item.get("target_price") else "목표주가 미추출"
+        listed = entry.get("listing_target_price")
+        listed = listed if isinstance(listed, int) and not isinstance(listed, bool) and listed > 0 else None
+        extracted = _won(item.get("target_price"))
+        target = listed or extracted
+        if not target:
+            reason = item.get("error") or ("목표주가 단위 미확인" if item.get("target_price") else "목표주가 없음")
         elif not base["ticker"] or not base["date"]:
             reason = "종목코드 또는 발간일 없음"
         else:
@@ -93,8 +95,10 @@ def load_reports(pdf_dir, extract=None, progress=None):
         if reason:
             skipped.append(dict(base, reason=reason))
             continue
-        reports.append(dict(base, company=item.get("company"), target_price=target,
-                            opinion=opinion_class(item.get("opinion")), report_price=_won(item.get("current_price")),
+        reports.append(dict(base, company=entry.get("company") or item.get("company"), target_price=target,
+                            target_origin="네이버 목록" if listed else "PDF 원문", pdf_target=extracted,
+                            opinion=opinion_class(entry.get("listing_opinion")) or opinion_class(item.get("opinion")),
+                            report_price=_won(item.get("current_price")),
                             stated_change=item.get("target_change"), stated_previous=_won(item.get("previous_target")),
                             page=item.get("target_page"), source=item.get("target_source") or ""))
     if changed:
@@ -241,9 +245,22 @@ def load_prices(tickers, start, end=None):
 def _hover(row):
     previous = f"{row['previous_target']:,}원" if row.get("previous_target") else "확인 불가"
     basis = f" · 근거: {row['change_basis']}" if row.get("change_basis") else ""
-    page = f"{row['page']}페이지" if row.get("page") else "페이지 미확인"
     return (f"<b>{row['broker']}</b> · {row['date']}<br>목표주가 {row['target_price']:,}원 ({row['change']}{basis})"
-            f"<br>직전 {previous}<br>투자의견 {row.get('opinion') or '미확인'}<br>{row['title']}<br>근거: {page}")
+            f"<br>직전 {previous}<br>투자의견 {row.get('opinion') or '미확인'}<br>{row['title']}<br>출처: {source_note(row)}")
+
+
+def source_note(row):
+    """Where the target came from and whether the PDF cover agrees."""
+    origin = row.get("target_origin") or "PDF 원문"
+    page = f"PDF {row['page']}페이지" if row.get("page") else "PDF 위치 미확인"
+    pdf = row.get("pdf_target")
+    if origin == "PDF 원문":
+        return page
+    if pdf is None:
+        return f"{origin} (PDF에서 확인 못 함)"
+    if pdf != row["target_price"]:
+        return f"{origin} (PDF {pdf:,}원과 다름, {page})"
+    return f"{origin} · {page} 일치"
 
 
 def _layout(figure, height):
@@ -254,6 +271,36 @@ def _layout(figure, height):
     figure.update_xaxes(gridcolor=GRID, zeroline=False, linecolor="#c3c2b7")
     figure.update_yaxes(gridcolor=GRID, zeroline=False, linecolor="#c3c2b7")
     return figure
+
+
+def _label_positions(items, span, value_range):
+    """Anchor side and y for gap labels so labels of nearby reports do not overlap.
+
+    Reports within ~8% of the date span form a cluster. The earliest label in
+    a cluster goes left of its line and the rest go right; labels on the same
+    side are pushed apart vertically by ~12% of the value range.
+    """
+    near = max(timedelta(days=2), span * 0.08)
+    gap = max(value_range * 0.12, 1)
+    order = sorted(range(len(items)), key=lambda index: items[index]["row"]["date"])
+    placed = [None] * len(items)
+    cluster = []
+    for index in order + [None]:
+        day = date.fromisoformat(items[index]["row"]["date"]) if index is not None else None
+        if cluster and (index is None or day - date.fromisoformat(items[cluster[-1]]["row"]["date"]) > near):
+            sides = {"right": cluster[:1], "left": []} if len(cluster) == 1 else {"right": cluster[1:], "left": cluster[:1]}
+            for anchor, members in sides.items():
+                taken = []
+                for member in sorted(members, key=lambda m: -(items[m]["base"] + items[m]["row"]["target_price"]) / 2):
+                    y = (items[member]["base"] + items[member]["row"]["target_price"]) / 2
+                    while any(abs(y - other) < gap for other in taken):
+                        y -= gap
+                    taken.append(y)
+                    placed[member] = (anchor, y)
+            cluster = []
+        if index is not None:
+            cluster.append(index)
+    return placed
 
 
 def _close_on(history, day):
@@ -386,12 +433,15 @@ def history_figure(reports, ticker, history=None):
                                     customdata=[[item["gap"], item["gap"] / item["base"] * 100, item["row"]["broker"]] for item in connectors],
                                     hovertemplate="%{x|%Y-%m-%d} · %{customdata[2]}<br>발간일 종가 %{y:,.0f}원"
                                                   "<br>목표가까지 %{customdata[0]:+,.0f}원 (%{customdata[1]:+.1f}%)<extra></extra>"), **main)
-    for item in connectors:
-        if latest[item["row"]["broker"]] is item["row"]:
-            figure.add_annotation(x=item["row"]["date"], y=(item["base"] + item["row"]["target_price"]) / 2, xanchor="left", xshift=8,
-                                  text=f"<b>{item['gap']:+,.0f}원</b><br>{item['gap'] / item['base'] * 100:+.1f}%",
-                                  showarrow=False, align="left", font=dict(color=INK, size=12),
-                                  bgcolor="rgba(255,255,255,0.85)", **main)
+    labelled = [item for item in connectors if latest[item["row"]["broker"]] is item["row"]]
+    first = min([row["date"] for row in rows] + ([history[0][0]] if history else []))
+    span = date.fromisoformat(end) - date.fromisoformat(first)
+    values = [row["target_price"] for row in rows] + [item["base"] for item in connectors]
+    for item, (anchor, y) in zip(labelled, _label_positions(labelled, span, max(values) - min(values))):
+        figure.add_annotation(x=item["row"]["date"], y=y, xanchor=anchor, xshift=8 if anchor == "left" else -8,
+                              text=f"<b>{item['gap']:+,.0f}원</b><br>{item['gap'] / item['base'] * 100:+.1f}%",
+                              showarrow=False, align=anchor, font=dict(color=INK, size=12),
+                              bgcolor="rgba(255,255,255,0.85)", **main)
     for change, (color, symbol) in CHANGE_STYLE.items():
         items = [row for row in rows if row["change"] == change]
         if items:
@@ -399,8 +449,6 @@ def history_figure(reports, ticker, history=None):
                                         mode="markers", name=f"목표주가 {change}", hovertext=[_hover(row) for row in items], hoverinfo="text",
                                         marker=dict(size=13, color=color, symbol=symbol,
                                                     line=dict(width=2, color="#ffffff" if symbol != "circle-open" else color))), **main)
-    first = min([row["date"] for row in rows] + ([history[0][0]] if history else []))
-    span = date.fromisoformat(end) - date.fromisoformat(first)
     # Leave room on the right so labels on the newest report are not clipped.
     pad = max(timedelta(days=3), span * 0.08)
     figure.update_yaxes(tickformat=",", title=None)

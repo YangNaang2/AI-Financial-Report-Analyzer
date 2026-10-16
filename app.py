@@ -527,7 +527,7 @@ def change_feed(owner):
 
 
 def consensus_page(owner,demo):
-    title('CONSENSUS','목표주가와 현재가의 거리','수집한 리포트의 증권사별 목표주가를 종목 단위로 모읍니다. 종목코드·증권사·발간일은 네이버 목록 값을, 목표주가는 원문 페이지 근거와 함께 사용합니다.')
+    title('CONSENSUS','목표주가와 현재가의 거리','수집한 리포트의 증권사별 목표주가를 종목 단위로 모읍니다. 종목·증권사·발간일·목표주가·투자의견은 네이버 목록 값을 쓰고, PDF 표지와 대조해 근거 페이지와 직전 목표주가를 함께 보여줍니다.')
     if demo:
         notice('컨센서스는 실제로 수집한 리포트로 만듭니다. 데모를 끄고 확인하세요.'); return
     folders=collection_folders(owner)
@@ -547,7 +547,7 @@ def consensus_page(owner,demo):
         st.error('종목코드는 6자리 숫자로 입력하세요. 관심 종목 목록은 이전 상태로 되돌렸습니다.')
     watched=set(st.session_state[key])
     with st.expander(f'목표주가가 없어 제외한 리포트 {len(skipped)}건'):
-        st.caption('기술분석·IR 보고서처럼 원래 목표주가가 없는 문서와, 표지 형식 때문에 추출하지 못한 문서가 함께 있습니다.')
+        st.caption('네이버 목록과 PDF 표지 모두에 목표주가가 없는 문서입니다. 대부분 기술분석·IR 보고서처럼 원래 목표주가가 없는 문서입니다.')
         st.dataframe(pd.DataFrame([{'발간일':r['date'],'증권사':r['broker'],'종목코드':r['ticker'],'제목':r['title'],'사유':r['reason']} for r in skipped]),hide_index=True,width='stretch')
     if not reports:
         notice('목표주가를 확인한 리포트가 없습니다. 위 제외 목록의 사유를 확인하세요.'); return
@@ -588,7 +588,7 @@ def consensus_page(owner,demo):
         st.plotly_chart(consensus.history_figure(reports,ticker,(prices or {}).get(ticker)),width='stretch',config={'displayModeBar':False})
         st.caption('회색 계단선은 증권사별 목표주가가 유지된 구간입니다. 리포트가 쌓일수록 목표주가가 주가를 앞서는지 뒤쫓는지 보입니다.')
         st.dataframe(pd.DataFrame([{'발간일':r['date'],'증권사':r['broker'],'목표주가':r['target_price'],'직전':r['previous_target'],'변화':r['change'],'변화 근거':r['change_basis'] or '',
-                                    '투자의견':r['opinion'] or '미확인','근거 페이지':r['page'],'원문':r['source'],'제목':r['title']} for r in reports if r['ticker']==ticker]).astype({'직전':'Int64'}),
+                                    '투자의견':r['opinion'] or '미확인','출처':consensus.source_note(r),'원문':r['source'],'제목':r['title']} for r in reports if r['ticker']==ticker]).astype({'직전':'Int64'}),
                      hide_index=True,width='stretch',column_config={'목표주가':st.column_config.NumberColumn(format='localized'),'직전':st.column_config.NumberColumn(format='localized')})
     with tabs[2]:
         table=pd.DataFrame([{'★':'★' if r['ticker'] in watched else '','종목':r['company'],'코드':r['ticker'],'현재가':r['price'],'가격 기준':r['price_source'],'평균 목표가':r['mean_target'],

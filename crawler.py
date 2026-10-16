@@ -26,6 +26,8 @@ MAX_PAGE_BYTES = 2 * 1024 * 1024
 REQUEST_TIMEOUT = (5, 20)
 REQUEST_DELAY = 1.0
 MAX_RETRIES = 1
+# Values the listing API reports per item; refreshed on already-collected files.
+LISTING_FIELDS = ("company", "listing_target_price", "listing_opinion")
 
 
 class CollectionError(ValueError):
@@ -143,10 +145,13 @@ def _listing(page):
             identifier = str(item["nid"])
             if not re.fullmatch(r"[0-9]+", identifier):
                 raise CollectionError("리포트 식별자 형식이 변경되었습니다.")
+            goal = str(item.get("goalPrice") or "").replace(",", "").strip()
             reports.append({"source_url": f"{LIST_URL}/{identifier}", "nid": identifier,
                             "pdf_url": item.get("attachUrl"), "title": item["title"],
                             "published_at": item.get("writeDate"), "ticker": item.get("itemCode"),
-                            "broker": item.get("brokerName")})
+                            "broker": item.get("brokerName"), "company": item.get("itemName") or None,
+                            "listing_target_price": int(goal) if goal.isdigit() and int(goal) > 0 else None,
+                            "listing_opinion": item.get("opinionText") or None})
         return reports, bool(payload.get("hasNext", bool(reports)))
     except (json.JSONDecodeError, UnicodeError, CollectionError, requests.HTTPError) as original:
         # The old listing is only a public compatibility source. Authentication
@@ -200,6 +205,13 @@ def download_naver_reports(save_dir="./pdf_data", start_page=1, end_page=1, prog
                 if existing.stat().st_size <= MAX_PDF_BYTES:
                     raw = existing.read_bytes()
                     if raw.lstrip().startswith(b"%PDF-") and hashlib.sha256(raw).hexdigest() == previous.get("sha256"):
+                        # Fill listing fields added after this report was first collected.
+                        refreshed = {field: source[field] for field in LISTING_FIELDS
+                                     if source.get(field) is not None and previous.get(field) != source[field]}
+                        if refreshed:
+                            previous = manifest["reports"][key] = dict(previous, **refreshed)
+                            manifest["updated_at"] = _now()
+                            _atomic_json(manifest_path, manifest)
                         result["skipped"].append(dict(previous, reason="이미 검증하여 저장된 자료"))
                         continue
             entry = dict(source, status="pending", collected_at=_now())

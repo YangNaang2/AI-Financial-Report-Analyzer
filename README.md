@@ -58,18 +58,19 @@ python main.py collect --save-dir data/reports --start-page 1 --end-page 5
 python -m pip install -r requirements-data.txt   # 선택: 최신 종가
 ```
 
-`data/reports`에 수집한 리포트로 **종목 컨센서스** 화면을 만듭니다. 종목코드·증권사·발간일은 네이버 목록 값을 쓰고, 목표주가·투자의견·직전 목표주가·`(하향)`/`(M)` 같은 변화 표기는 PDF 표지에서 페이지 근거와 함께 읽습니다. 처음 열 때 PDF 추출에 시간이 걸리며(약 45개에 4분), 결과는 파일 해시별로 `data/reports/consensus_cache.json`에 저장해 다음부터 바로 엽니다.
+`data/reports`에 수집한 리포트로 **종목 컨센서스** 화면을 만듭니다. 종목명·종목코드·증권사·발간일·목표주가·투자의견은 네이버 목록 값을 쓰고, PDF 표지에서는 근거 페이지, 직전 목표주가, `(하향)`/`(M)` 같은 변화 표기를 읽어 목록 값과 대조합니다. 목록 값이 없는 예전 수집분은 PDF 값을 쓰며, `main.py collect`를 다시 실행하면 이미 받은 리포트의 목록 값도 채워집니다. 처음 열 때 PDF 추출에 시간이 걸리며(약 45개에 4분), 결과는 파일 해시별로 `data/reports/consensus_cache.json`에 저장해 다음부터 바로 엽니다.
 
 - **현재가**: FinanceDataReader가 있으면 최신 종가, 없으면 리포트에 적힌 주가를 쓰고 어느 쪽인지 표시합니다.
 - **평균 목표주가**: 선택한 기간 안에서 증권사별 최신 리포트 하나씩만 평균합니다.
 - **상향·하향 판단**: 원문의 직전 목표주가 → 같은 증권사의 직전 수집 리포트 → 원문의 상향/하향 표기 순으로 근거를 찾고, 근거 종류를 함께 보여줍니다.
 - **관심 종목**: `data/reports/watchlist.json`에 저장되어 새 세션에서도 유지됩니다. 대시보드의 새 변화와 컨센서스 목록에서 먼저 표시됩니다.
-- **추출 점검**: `python audit_extraction.py --pdf-dir data/reports`가 네이버 목록 값과 비교한 일치율과 증권사별 추출률, 원문 줄을 CSV로 남깁니다.
+- **출처 표시**: ② 이력 표의 출처 열에서 목표주가가 목록 값인지 PDF 값인지, PDF 표지와 일치하는지 확인할 수 있습니다.
+- **추출 점검**: `python audit_extraction.py --pdf-dir data/reports`가 PDF 표지 추출을 네이버 목록 값과 비교한 증권사별 일치율과 원문 줄을 CSV로 남깁니다.
 
-Windows에서는 `collect_daily.cmd`를 작업 스케줄러에 등록해 매일 1~5페이지를 수집하고 목표주가 캐시를 미리 만들 수 있습니다. 이미 받은 PDF는 건너뛰며 기록은 `data/collect_daily.log`에 남습니다. 작업은 로그인한 상태에서 실행되고, 특정 Python(예: 가상환경)을 쓰려면 `REPORT_LENS_PYTHON` 환경 변수에 경로를 지정합니다.
+Windows에서는 `collect_daily.cmd`를 작업 스케줄러에 등록해 매일 1~5페이지를 수집하고 목표주가 캐시를 미리 만들 수 있습니다. 이미 받은 PDF는 건너뛰며 기록은 `data/collect_daily.log`에 남습니다. 작업은 로그인한 상태에서 창 없이(`conhost --headless`) 실행되고, 특정 Python(예: 가상환경)을 쓰려면 `REPORT_LENS_PYTHON` 환경 변수에 경로를 지정합니다.
 
 ```powershell
-$action = New-ScheduledTaskAction -Execute 'cmd.exe' -Argument "/c `"$PWD\collect_daily.cmd`"" -WorkingDirectory $PWD
+$action = New-ScheduledTaskAction -Execute 'conhost.exe' -Argument "--headless cmd.exe /c `"$PWD\collect_daily.cmd`"" -WorkingDirectory $PWD
 Register-ScheduledTask -TaskName 'ReportLens Daily Collect' -Action $action -Trigger (New-ScheduledTaskTrigger -Daily -At '18:30') -Settings (New-ScheduledTaskSettingsSet -StartWhenAvailable)
 ```
 
@@ -136,6 +137,6 @@ GitHub Actions는 Python 3.12/3.13에서 네트워크 모델 다운로드 없이
 - 검증된 실전 금융 모델은 포함하지 않습니다. 학습용 리포트와 가격 데이터가 충분하지 않으면 **평가 불충분**입니다. 보정된 하락 확률, 투자 권고 또는 의도 탐지 성능을 주장하지 않습니다.
 - OCR 엔진은 기본 설치에 없습니다. 별도 OCR 환경에서 검색 가능한 PDF로 변환해 입력하세요. 한국어 OCR 품질 검증은 이번 범위에 포함하지 않습니다.
 - 복잡한 표, 회계 기간, 다중 통화, 기업명 자동 추출에는 한계가 있습니다. 페이지 텍스트는 원본의 시각적 배치와 다를 수 있습니다.
-- 목표주가는 표지 규칙으로 읽습니다. 2026년 10월 수집분 점검에서 증권사 리포트 36개 중 28개(78%)를 추출했고, 첫 페이지가 차트나 깨진 글자로만 추출되는 PDF는 놓칩니다. 기술분석·IR 보고서처럼 목표주가가 없는 문서는 컨센서스에서 제외합니다.
+- 목표주가·투자의견은 네이버 목록 값을 우선합니다. 2026년 10월 수집분 75개 점검에서 PDF 표지 규칙은 목록에 목표주가가 있는 65개 중 53개(82%)를 읽었고 목록 값과 다르게 읽은 경우는 없었습니다. 첫 페이지가 차트나 깨진 글자로만 추출되는 PDF(미래에셋증권, 신한투자증권 일부)에서는 근거 페이지와 직전 목표주가를 확인하지 못합니다. 기술분석·IR 보고서처럼 목표주가가 없는 문서는 컨센서스에서 제외합니다.
 - 상승여력은 평균 목표주가와 현재가의 차이일 뿐이며 투자 권고나 목표가 달성 가능성을 뜻하지 않습니다.
 - GitHub 소스 반영과 웹 서비스 공개 배포는 별개입니다. 이 저장소는 로컬 실행 앱이며 공개 서비스로 배포하지 않았습니다.

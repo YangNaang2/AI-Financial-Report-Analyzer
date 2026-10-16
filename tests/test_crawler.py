@@ -66,6 +66,23 @@ class CrawlerTests(unittest.TestCase):
         self.assertEqual(len(resumed["skipped"]), 1)
         self.assertEqual(get.call_count, 1)
 
+    def test_listing_values_are_saved_and_backfilled_on_existing_files(self):
+        pdf_url = "https://stock.pstatic.net/1.pdf"
+        with mock.patch("crawler.requests.get", side_effect=[listing([report(attachUrl=pdf_url)]), Response(b"%PDF-1 test")]):
+            first = crawler.download_naver_reports(self.path)
+        self.assertEqual((first["downloaded"][0]["company"], first["downloaded"][0]["listing_target_price"]), (None, None))
+        richer = report(attachUrl=pdf_url, itemName="삼성전자", goalPrice="120,000", opinionText="매수")
+        with mock.patch("crawler.requests.get", return_value=listing([richer])) as get:
+            again = crawler.download_naver_reports(self.path)
+        self.assertEqual((again["count"], get.call_count), (0, 1))
+        manifest = json.loads((self.path / "collection_manifest.json").read_text(encoding="utf-8"))
+        (row,) = manifest["reports"].values()
+        self.assertEqual((row["company"], row["listing_target_price"], row["listing_opinion"]), ("삼성전자", 120000, "매수"))
+        self.assertEqual(row["sha256"], first["downloaded"][0]["sha256"])
+        zero = report("2", attachUrl="https://stock.pstatic.net/2.pdf", goalPrice="0")
+        with mock.patch("crawler.requests.get", side_effect=[listing([zero]), Response(b"%PDF-2 test")]):
+            self.assertIsNone(crawler.download_naver_reports(self.path)["downloaded"][0]["listing_target_price"])
+
     def test_identical_titles_get_distinct_sanitized_names(self):
         items = [report(str(i), "../../같은:제목", attachUrl=f"https://stock.pstatic.net/{i}.pdf") for i in (1, 2)]
         with mock.patch("crawler.requests.get", side_effect=[listing(items), Response(b"%PDF-1 test"), Response(b"%PDF-2 test")]):

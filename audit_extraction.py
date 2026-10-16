@@ -1,9 +1,9 @@
 """Audit header-metadata extraction on collected reports before building consensus views.
 
-Ticker, broker and publication date are checked against the Naver listing
-recorded in collection_manifest.json. Opinion and target price have no listing
-reference, so the audit reports fill rates, the reason a value is missing and
-the source line, leaving correctness to a manual check of the CSV.
+Ticker, name, broker, date, target price and opinion are checked against the
+Naver listing recorded in collection_manifest.json. Entries collected before
+the listing carried target prices and opinions report those as "기준 없음";
+re-running collection fills them in. The CSV keeps each source line.
 """
 
 import argparse
@@ -13,9 +13,12 @@ import json
 from pathlib import Path
 import re
 
+from data_processor import opinion_class
+
 FIELDS = ("company", "ticker", "broker", "report_date", "opinion", "target_price", "current_price",
           "target_change", "previous_target_price")
-REFERENCES = {"ticker": "ticker", "broker": "broker", "report_date": "published_at"}
+REFERENCES = {"company": "company", "ticker": "ticker", "broker": "broker", "report_date": "published_at",
+              "opinion": "listing_opinion", "target_price": "listing_target_price"}
 MISSING_REASONS = (("서로 다른 후보", "후보 충돌"), ("복합 금액", "복합 금액"), ("형식이 불명확", "형식 불명확"))
 
 
@@ -31,6 +34,10 @@ def _normalize(field, value):
         return None
     if field == "report_date":
         return _date(value)
+    if field == "target_price":
+        return str(value).split()[0]
+    if field == "opinion":
+        return opinion_class(value) or re.sub(r"\s+", "", str(value))
     return re.sub(r"\s+", "", str(value))
 
 
@@ -73,6 +80,9 @@ def audit_document(entry, document):
             actual = _normalize(field, value)
             row[f"{field}_check"] = ("기준 없음" if expected is None else "누락" if actual is None
                                      else "일치" if actual == expected else "불일치")
+            row[f"{field}_expected"] = expected or ""
+            if actual is None:
+                row[f"{field}_reason"] = _missing_reason(field, warnings)
         elif value:
             row[f"{field}_check"] = "추출"
         else:
@@ -80,7 +90,6 @@ def audit_document(entry, document):
     for field in ("opinion", "target_price"):
         row[f"{field}_page"] = evidence.get(field, {}).get("page", "")
         row[f"{field}_source"] = evidence.get(field, {}).get("text", "")
-        row[f"{field}_manual_ok"] = ""
     return row
 
 
@@ -113,7 +122,9 @@ def summarize(rows):
             if field in REFERENCES:
                 compared = len(extracted) - checks["기준 없음"]
                 stats[field] = dict(match=checks["일치"], compared=compared,
-                                    mismatch=checks["불일치"], missing=checks["누락"])
+                                    mismatch=checks["불일치"], missing=checks["누락"],
+                                    reasons=Counter(row[f"{field}_reason"] for row in extracted
+                                                    if row.get(f"{field}_check") == "누락"))
             else:
                 stats[field] = dict(filled=checks["추출"], total=len(extracted),
                                     reasons={key: value for key, value in checks.items() if key != "추출"})
@@ -127,7 +138,7 @@ def _rate(numerator, denominator):
 
 def format_summary(summary):
     columns = ("ticker", "broker", "report_date", "opinion", "target_price")
-    lines = ["증권사\t리포트\t종목코드 일치\t증권사 일치\t발간일 일치\t투자의견 추출\t목표주가 추출"]
+    lines = ["증권사\t리포트\t종목코드 일치\t증권사 일치\t발간일 일치\t투자의견 일치\t목표주가 일치"]
     order = sorted((key for key in summary if key != "전체"), key=lambda key: -summary[key]["reports"]) + ["전체"]
     for broker in order:
         stats = summary[broker]
@@ -143,6 +154,10 @@ def format_summary(summary):
     if reasons:
         lines.append("")
         lines.append("미추출 사유: " + ", ".join(f"{key} {value}건" for key, value in reasons.most_common()))
+    wrong = {field: summary["전체"][field]["mismatch"] for field in ("opinion", "target_price") if summary["전체"][field]["mismatch"]}
+    if wrong:
+        lines.append("목록 값과 다르게 추출: " + ", ".join(f"{field} {count}건" for field, count in wrong.items())
+                     + " (CSV의 *_check가 불일치인 행 참고)")
     if summary["전체"]["errors"]:
         lines.append(f"추출 실패: {summary['전체']['errors']}건 (CSV의 status 열 참고)")
     return "\n".join(lines)
@@ -172,7 +187,7 @@ def main(argv=None):
     write_csv(rows, args.output)
     print(format_summary(summarize(rows)))
     print(f"\n리포트별 결과: {args.output}")
-    print("투자의견·목표주가는 *_source 열의 원문 줄을 보고 *_manual_ok 열에 O/X로 직접 확인하세요.")
+    print("일치율은 네이버 목록 값 기준입니다. 목록 값이 없는 예전 수집분은 main.py collect를 다시 실행하면 채워집니다.")
     return 0
 
 

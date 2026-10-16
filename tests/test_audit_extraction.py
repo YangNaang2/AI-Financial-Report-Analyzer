@@ -28,20 +28,35 @@ class AuditExtractionTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as folder:
             directory = Path(folder)
             collected(directory, [
-                dict(title="좋은 실적", broker="미래에셋증권", ticker="005930", published_at="2026-09-29"),
-                dict(title="표지가 다름", broker="삼성증권", ticker="000660", published_at="2026.09.29"),
+                dict(title="좋은 실적", broker="미래에셋증권", ticker="005930", published_at="2026-09-29",
+                     company="삼성전자", listing_target_price=90000, listing_opinion="Buy"),
+                dict(title="표지가 다름", broker="삼성증권", ticker="000660", published_at="2026.09.29",
+                     company="SK하이닉스", listing_target_price=1500, listing_opinion="매수"),
             ])
             rows = audit_extraction.audit(directory, extract=lambda path: document_from_text(texts[path.name], path.name))
         first, second = rows
-        self.assertEqual((first["ticker_check"], first["broker_check"], first["report_date_check"]), ("일치", "일치", "일치"))
-        self.assertEqual((first["target_price"], first["target_price_check"], first["target_price_page"]), ("90000 원", "추출", 1))
+        self.assertEqual((first["ticker_check"], first["broker_check"], first["report_date_check"], first["company_check"]),
+                         ("일치", "일치", "일치", "일치"))
+        # "매수" on the cover and "Buy" in the listing are the same opinion.
+        self.assertEqual((first["target_price_check"], first["opinion_check"], first["target_price_page"]), ("일치", "일치", 1))
         self.assertIn("90,000", first["target_price_source"])
         self.assertEqual((second["broker_check"], second["report_date_check"]), ("누락", "불일치"))
-        self.assertEqual((second["target_price_check"], second["opinion_check"]), ("후보 충돌", "미발견"))
+        self.assertEqual((second["target_price_check"], second["target_price_reason"], second["target_price_expected"]),
+                         ("누락", "후보 충돌", "1500"))
+        self.assertEqual((second["opinion_check"], second["opinion_reason"]), ("누락", "미발견"))
         summary = audit_extraction.summarize(rows)
-        self.assertEqual(summary["전체"]["ticker"], dict(match=2, compared=2, mismatch=0, missing=0))
-        self.assertEqual(summary["미래에셋증권"]["target_price"]["filled"], 1)
+        self.assertEqual({key: summary["전체"]["ticker"][key] for key in ("match", "compared", "mismatch", "missing")},
+                         dict(match=2, compared=2, mismatch=0, missing=0))
+        self.assertEqual(summary["전체"]["target_price"]["match"], 1)
         self.assertIn("target_price:후보 충돌 1건", audit_extraction.format_summary(summary))
+
+    def test_older_entries_without_listing_values_have_no_reference(self):
+        with tempfile.TemporaryDirectory() as folder:
+            directory = Path(folder)
+            collected(directory, [dict(title="예전 수집", broker="미래에셋증권", ticker="005930", published_at="2026-09-29")])
+            (row,) = audit_extraction.audit(directory, extract=lambda path: document_from_text(HEADER, path.name))
+        self.assertEqual((row["target_price_check"], row["opinion_check"]), ("기준 없음", "기준 없음"))
+        self.assertEqual(audit_extraction.summarize([row])["전체"]["target_price"]["compared"], 0)
 
     def test_extraction_errors_are_counted_and_csv_is_written(self):
         def extract(path):
