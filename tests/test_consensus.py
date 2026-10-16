@@ -125,7 +125,7 @@ class ConsensusTests(unittest.TestCase):
         reports, _ = consensus.load_reports(self.directory, extract=self.extract)
         latest = consensus.latest_by_broker(reports, "003490", "2026-10-16")
         target = consensus.target_figure(latest, consensus.current_price(reports, "003490"))
-        self.assertEqual({trace.name for trace in target.data if trace.showlegend is not False}, {"▲ 상향", "○ 비교 없음"})
+        self.assertEqual({trace.name for trace in target.data if trace.showlegend is not False}, {"상향", "비교 없음"})
         # One current-price line; each broker and the mean get a line from that price to the target.
         self.assertEqual(len(target.layout.shapes), 1)
         gaps = [trace for trace in target.data if trace.mode == "lines"]
@@ -144,7 +144,7 @@ class ConsensusTests(unittest.TestCase):
         labels = sorted(annotation.text for annotation in priced.layout.annotations if "원</b>" in annotation.text)
         self.assertEqual(labels, ["<b>+10,000원</b><br>+32.3%", "<b>+9,000원</b><br>+29.0%"])
         # The top panel holds only the close and publication markers, so it scales to the price.
-        top = {trace.name for trace in priced.data if trace.yaxis == "y"}
+        top = {trace.name for trace in priced.data if trace.yaxis == "y" and trace.name}
         self.assertEqual(top, {"종가", "리포트 발간"})
         self.assertEqual({annotation.text for annotation in priced.layout.annotations if "원</b>" not in annotation.text},
                          {"주가 추이", "목표주가와 발간일 종가"})

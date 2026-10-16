@@ -6,7 +6,7 @@
 
 기존 AI-Financial-Report-Analyzer를 실제 문서 검토 흐름으로 확장했습니다. 모델이 없어도 텍스트/PDF 추출, 표현 탐지, 원문 확인, 보고서 비교, 보관함과 내보내기를 사용할 수 있습니다. 공개 리포트를 매일 수집하면 종목별 목표주가 컨센서스, 상승여력, 목표가 상향·하향 알림을 원문 페이지 근거와 함께 볼 수 있습니다. 가상 데모는 실제 기록과 분리됩니다.
 
-![가상 데모 대시보드](docs/dashboard.png)
+![대시보드: 수집 리포트의 목표가 수정 흐름, 상향 비율, 새 변화](docs/dashboard.png)
 
 > 이 앱의 음성 클래스는 후행 가격 하락으로 만든 대리 라벨입니다. 모델 점수는 애널리스트의 의도, 실제 하락 확률 또는 매수 안전성을 나타내지 않습니다. 규칙 탐지와 모델 결과를 구분합니다.
 
@@ -39,7 +39,7 @@ python -m streamlit run app.py
 
 | 화면 | 실제 동작 |
 |---|---|
-| 대시보드 | 수집 리포트의 새 변화(목표가 상향·하향, 투자의견 변경, 커버리지 개시)와 NEW 표시, 최근 분석, 보관 문서, 기업별 기록, 완료 모델 상태 |
+| 대시보드 | 수집 현황 지표, 최근 목표가 변경 띠, 날짜별 상향·하향 흐름, 30일 상향 비율 게이지, 새 변화(목표가 상향·하향, 투자의견 변경, 커버리지 개시)와 NEW 표시, 최근 분석·보관 문서·모델 상태 |
 | 리포트 분석 | 텍스트, 단일·다중 PDF(최대 5개), 추출 미리보기, 메타데이터 확인·수정, 백그라운드 분석·저장 |
 | 분석 상세 | 구간 점수, 페이지별 차트, 원문 페이지 이동·강조, 발췌 요약, 단위·출처가 있는 수치, 분석 범위·미처리 구간 |
 | 리포트 비교 | 같은 기업의 시점·증권사별 의견/목표주가/표현 변화, 원문 근거, 호환 모델 설정에서만 점수 차이 |
@@ -54,11 +54,19 @@ PDF는 파일당 20MB·100페이지 이하, 저장 가능한 추출문은 문서
 ## 종목 컨센서스와 매일 수집
 
 ```bash
-python main.py collect --save-dir data/reports --start-page 1 --end-page 5
+python main.py collect --save-dir data/reports --start-page 1 --end-page 30 --until-known
 python -m pip install -r requirements-data.txt   # 선택: 최신 종가
 ```
 
+`--until-known`은 최신 페이지부터 넘기다가 이미 받은 리포트만 있는 페이지에서 멈춥니다. 평소에는 1~2페이지로 끝나고, PC를 며칠 꺼 두었다면 `--end-page`(30페이지, 약 2주) 안에서 빠진 기간을 채웁니다.
+
 `data/reports`에 수집한 리포트로 **종목 컨센서스** 화면을 만듭니다. 종목명·종목코드·증권사·발간일·목표주가·투자의견은 네이버 목록 값을 쓰고, PDF 표지에서는 근거 페이지, 직전 목표주가, `(하향)`/`(M)` 같은 변화 표기를 읽어 목록 값과 대조합니다. 목록 값이 없는 예전 수집분은 PDF 값을 쓰며, `main.py collect`를 다시 실행하면 이미 받은 리포트의 목록 값도 채워집니다. 처음 열 때 PDF 추출에 시간이 걸리며(약 45개에 4분), 결과는 파일 해시별로 `data/reports/consensus_cache.json`에 저장해 다음부터 바로 엽니다.
+
+| ① 목표주가 vs 현재가 | ② 목표주가 이력 |
+|---|---|
+| ![증권사별 목표주가와 현재가의 거리](docs/consensus.png) | ![주가 추이와 목표주가, 발간일 종가 대비 차이](docs/history.png) |
+
+화면은 2026년 10월 15~16일 이틀치 수집분입니다. 매일 수집이 쌓일수록 ② 이력과 대시보드의 수정 흐름이 길어집니다.
 
 - **현재가**: FinanceDataReader가 있으면 최신 종가, 없으면 리포트에 적힌 주가를 쓰고 어느 쪽인지 표시합니다.
 - **평균 목표주가**: 선택한 기간 안에서 증권사별 최신 리포트 하나씩만 평균합니다.
@@ -67,7 +75,7 @@ python -m pip install -r requirements-data.txt   # 선택: 최신 종가
 - **출처 표시**: ② 이력 표의 출처 열에서 목표주가가 목록 값인지 PDF 값인지, PDF 표지와 일치하는지 확인할 수 있습니다.
 - **추출 점검**: `python audit_extraction.py --pdf-dir data/reports`가 PDF 표지 추출을 네이버 목록 값과 비교한 증권사별 일치율과 원문 줄을 CSV로 남깁니다.
 
-Windows에서는 `collect_daily.cmd`를 작업 스케줄러에 등록해 매일 1~5페이지를 수집하고 목표주가 캐시를 미리 만들 수 있습니다. 이미 받은 PDF는 건너뛰며 기록은 `data/collect_daily.log`에 남습니다. 작업은 로그인한 상태에서 창 없이(`conhost --headless`) 실행되고, 특정 Python(예: 가상환경)을 쓰려면 `REPORT_LENS_PYTHON` 환경 변수에 경로를 지정합니다.
+Windows에서는 `collect_daily.cmd`를 작업 스케줄러에 등록해 매일 위 방식으로 수집하고 목표주가 캐시를 미리 만들 수 있습니다. 이미 받은 PDF는 건너뛰며 기록은 `data/collect_daily.log`에 남습니다. 작업은 로그인한 상태에서 창 없이(`conhost --headless`) 실행되고, 예정 시각에 PC가 꺼져 있었다면 다음 로그인 때 실행됩니다. 특정 Python(예: 가상환경)을 쓰려면 `REPORT_LENS_PYTHON` 환경 변수에 경로를 지정합니다. PDF는 리포트당 평균 1MB, 하루 약 40MB(연 9~10GB)가 쌓입니다.
 
 ```powershell
 $action = New-ScheduledTaskAction -Execute 'conhost.exe' -Argument "--headless cmd.exe /c `"$PWD\collect_daily.cmd`"" -WorkingDirectory $PWD

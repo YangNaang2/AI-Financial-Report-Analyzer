@@ -69,6 +69,17 @@ class ChangeEventTests(unittest.TestCase):
         self.assertAlmostEqual(raised["pct"], (41000 / 38000 - 1) * 100)
         self.assertEqual([e["date"] for e in events], sorted((e["date"] for e in events), reverse=True))
 
+    def test_revision_breadth_and_flow_count_upgrades_and_downgrades(self):
+        breadth = consensus.revision_breadth(self.reports)
+        self.assertEqual((breadth["ups"], breadth["downs"], breadth["share"]), (1, 1, 50.0))
+        self.assertEqual(consensus.revision_breadth(self.reports, days=1)["share"], 50.0)
+        self.assertIsNone(consensus.revision_breadth([])["share"])
+        flow = consensus.revision_flow_figure(self.reports)
+        bars = {trace.name: dict(zip(trace.x, trace.y)) for trace in flow.data}
+        self.assertEqual(bars, {"▲ 목표가 상향": {"2026-10-16": 1}, "▼ 목표가 하향": {"2026-10-16": -1}})
+        gauge = consensus.breadth_figure(breadth)
+        self.assertEqual(gauge.data[0].value, 50.0)
+
     def test_feed_can_be_limited_to_watched_tickers(self):
         events = consensus.change_events(self.reports, tickers={"000100"})
         self.assertEqual([e["kind"] for e in events], ["목표가 하향"])

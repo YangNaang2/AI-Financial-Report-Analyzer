@@ -24,9 +24,11 @@ CACHE_VERSION = f"{EXTRACTION_VERSION}/{METADATA_VERSION}"
 UP, DOWN, SAME, NEW = "상향", "하향", "유지", "신규"
 # Korean market convention: red for up, blue for down. Symbols carry the same
 # meaning so direction never depends on color alone.
-CHANGE_STYLE = {UP: ("#e34948", "triangle-up"), DOWN: ("#2a78d6", "triangle-down"),
-                SAME: ("#898781", "circle"), NEW: ("#52514e", "circle-open")}
-INK, INK_SECONDARY, INK_MUTED, GRID = "#0b0b0b", "#52514e", "#898781", "#e1e0d9"
+CHANGE_STYLE = {UP: ("#e66767", "triangle-up"), DOWN: ("#3987e5", "triangle-down"),
+                SAME: ("#9aa4b2", "circle"), NEW: ("#cbd5e1", "circle-open")}
+# Dark terminal surface: light ink, faint grid, cyan for the price line.
+INK, INK_SECONDARY, INK_MUTED, GRID = "#e6edf7", "#a9b6c9", "#6b7a90", "#1c2636"
+RULE, RING, PRICE, ACCENT = "#334155", "#0b1220", "#7dd3fc", "#22d3ee"
 UNITS = {"원": 1, "KRW": 1, "천원": 1000, "만원": 10000}
 
 
@@ -265,11 +267,11 @@ def source_note(row):
 
 def _layout(figure, height):
     figure.update_layout(height=height, margin=dict(l=8, r=24, t=56, b=8), paper_bgcolor="rgba(0,0,0,0)",
-                         plot_bgcolor="#ffffff", font=dict(color=INK_SECONDARY, size=13),
-                         hoverlabel=dict(bgcolor="#ffffff", font_color=INK),
+                         plot_bgcolor="rgba(0,0,0,0)", font=dict(color=INK_SECONDARY, size=13),
+                         hoverlabel=dict(bgcolor="#0e1626", bordercolor=ACCENT, font_color=INK),
                          legend=dict(orientation="h", yanchor="bottom", y=1.02, x=0, title=None))
-    figure.update_xaxes(gridcolor=GRID, zeroline=False, linecolor="#c3c2b7")
-    figure.update_yaxes(gridcolor=GRID, zeroline=False, linecolor="#c3c2b7")
+    figure.update_xaxes(gridcolor=GRID, zeroline=False, linecolor=RULE)
+    figure.update_yaxes(gridcolor=GRID, zeroline=False, linecolor=RULE)
     return figure
 
 
@@ -332,7 +334,7 @@ def target_figure(latest, price=None):
     if reference:
         for row in latest:
             figure.add_trace(go.Scatter(x=[reference, row["target_price"]], y=[row["broker"]] * 2, mode="lines",
-                                        line=dict(color="#c3c2b7", width=3), hoverinfo="skip", showlegend=False))
+                                        line=dict(color=RULE, width=3), hoverinfo="skip", showlegend=False))
         figure.add_trace(go.Scatter(x=[reference, mean], y=[mean_label] * 2, mode="lines",
                                     line=dict(color=INK_SECONDARY, width=3, dash="dot"), hoverinfo="skip", showlegend=False))
     for change, (color, symbol) in CHANGE_STYLE.items():
@@ -341,14 +343,14 @@ def target_figure(latest, price=None):
             continue
         figure.add_trace(go.Scatter(
             x=[row["target_price"] for row in rows], y=[row["broker"] for row in rows], mode="markers+text",
-            name={UP: "▲ 상향", DOWN: "▼ 하향", SAME: "● 유지", NEW: "○ 비교 없음"}[change],
+            name={UP: "상향", DOWN: "하향", SAME: "유지", NEW: "비교 없음"}[change],
             text=[label(row["target_price"]) for row in rows], textposition=[side(row["target_price"]) for row in rows],
-            textfont=dict(color=INK_SECONDARY), legendgroup="change", legendgrouptitle_text="직전 대비",
-            marker=dict(size=14, color=color, symbol=symbol, line=dict(width=2, color="#ffffff" if symbol != "circle-open" else color)),
+            textfont=dict(color=INK_SECONDARY),
+            marker=dict(size=14, color=color, symbol=symbol, line=dict(width=2, color=RING if symbol != "circle-open" else color)),
             hovertext=[_hover(row) for row in rows], hoverinfo="text"))
     figure.add_trace(go.Scatter(x=[mean], y=[mean_label], mode="markers+text", showlegend=False,
                                 text=[label(mean, bold=True)], textposition=side(mean), textfont=dict(color=INK),
-                                marker=dict(size=13, color=INK, symbol="diamond", line=dict(width=2, color="#ffffff")),
+                                marker=dict(size=13, color=ACCENT, symbol="diamond", line=dict(width=2, color=RING)),
                                 hovertemplate=f"평균 목표주가 {mean:,.0f}원<br>증권사 {len(latest)}곳의 최신 리포트 평균<extra></extra>"))
     values = [row["target_price"] for row in latest] + ([reference] if reference else [])
     span = max(values) - min(values) or max(values) * 0.1
@@ -356,13 +358,14 @@ def target_figure(latest, price=None):
     figure.update_xaxes(range=[min(values) - span * 0.3, max(values) + span * 0.45], title=None, tickformat=",")
     figure.update_yaxes(categoryorder="array", categoryarray=[row["broker"] for row in latest] + [mean_label], showgrid=False)
     if reference:
-        figure.add_vline(x=reference, line=dict(color=INK, width=2))
+        figure.add_vline(x=reference, line=dict(color=ACCENT, width=2))
         figure.add_annotation(x=reference, y=1, yref="paper", yanchor="bottom", xanchor="center", showarrow=False,
                               text=f"<b>현재가 {reference:,.0f}원</b> ({price['source']} {price['date'][5:]})",
-                              font=dict(color=INK, size=12))
+                              font=dict(color=ACCENT, size=12))
     _layout(figure, 170 + 46 * (len(latest) + 1))
     figure.update_layout(showlegend=True, margin=dict(t=88),
-                         legend=dict(y=0.99, yanchor="top", yref="container", groupclick="toggleitem"))
+                         legend=dict(y=0.99, yanchor="top", yref="container", orientation="h",
+                                     title=dict(text="직전 대비 ", font=dict(color=INK_MUTED))))
     return figure
 
 
@@ -391,11 +394,20 @@ def history_figure(reports, ticker, history=None):
         by_broker[row["broker"]].append(row)
     for broker, items in by_broker.items():
         figure.add_trace(go.Scatter(x=[row["date"] for row in items] + [end], y=[row["target_price"] for row in items] + [items[-1]["target_price"]],
-                                    mode="lines", line=dict(color="#c3c2b7", width=1.5, shape="hv"),
+                                    mode="lines", line=dict(color=RULE, width=1.5, shape="hv"),
                                     hoverinfo="skip", showlegend=False), **main)
     if history:
-        closes = dict(x=[day for day, _ in history], y=[close for _, close in history], mode="lines",
-                      line=dict(color=INK_SECONDARY, width=2), hovertemplate="%{x}<br>종가 %{y:,.0f}원<extra></extra>")
+        days, prices = [day for day, _ in history], [close for _, close in history]
+        closes = dict(x=days, y=prices, mode="lines",
+                      line=dict(color=PRICE, width=2), hovertemplate="%{x}<br>종가 %{y:,.0f}원<extra></extra>")
+        floor = min(prices) - (max(prices) - min(prices)) * 0.08
+        figure.add_trace(go.Scatter(x=days, y=[floor] * len(days), mode="lines", line=dict(width=0),
+                                    hoverinfo="skip", showlegend=False), row=1, col=1)
+        figure.add_trace(go.Scatter(x=days, y=prices, mode="lines", line=dict(width=0), fill="tonexty",
+                                    fillgradient=dict(type="vertical", colorscale=[[0, "rgba(125,211,252,0)"], [1, "rgba(125,211,252,0.28)"]]),
+                                    hoverinfo="skip", showlegend=False), row=1, col=1)
+        figure.add_trace(go.Scatter(x=days, y=prices, mode="lines", line=dict(color="rgba(125,211,252,0.18)", width=9),
+                                    hoverinfo="skip", showlegend=False), row=1, col=1)
         figure.add_trace(go.Scatter(name="종가", legendgroup="close", **closes), row=1, col=1)
         figure.add_trace(go.Scatter(name="종가", legendgroup="close", showlegend=False, **closes), **main)
         # Mark publication days on the trend so report timing is visible there too.
@@ -403,7 +415,7 @@ def history_figure(reports, ticker, history=None):
         published = [item for item in published if item[1]]
         if published:
             figure.add_trace(go.Scatter(x=[day for day, _, _ in published], y=[close for _, close, _ in published], mode="markers",
-                                        name="리포트 발간", marker=dict(size=9, color="#ffffff", line=dict(width=2, color=INK)),
+                                        name="리포트 발간", marker=dict(size=9, color=RING, line=dict(width=2, color=ACCENT)),
                                         customdata=[broker for _, _, broker in published],
                                         hovertemplate="%{x} · %{customdata} 리포트<br>종가 %{y:,.0f}원<extra></extra>"), row=1, col=1)
     else:
@@ -429,7 +441,7 @@ def history_figure(reports, ticker, history=None):
         connectors.append(dict(row=row, base=base, gap=gap))
     if connectors:
         figure.add_trace(go.Scatter(x=[item["row"]["date"] for item in connectors], y=[item["base"] for item in connectors],
-                                    mode="markers", name="발간일 종가", marker=dict(size=8, color=INK_SECONDARY, line=dict(width=2, color="#ffffff")),
+                                    mode="markers", name="발간일 종가", marker=dict(size=8, color=INK_SECONDARY, line=dict(width=2, color=RING)),
                                     customdata=[[item["gap"], item["gap"] / item["base"] * 100, item["row"]["broker"]] for item in connectors],
                                     hovertemplate="%{x|%Y-%m-%d} · %{customdata[2]}<br>발간일 종가 %{y:,.0f}원"
                                                   "<br>목표가까지 %{customdata[0]:+,.0f}원 (%{customdata[1]:+.1f}%)<extra></extra>"), **main)
@@ -441,16 +453,16 @@ def history_figure(reports, ticker, history=None):
         figure.add_annotation(x=item["row"]["date"], y=y, xanchor=anchor, xshift=8 if anchor == "left" else -8,
                               text=f"<b>{item['gap']:+,.0f}원</b><br>{item['gap'] / item['base'] * 100:+.1f}%",
                               showarrow=False, align=anchor, font=dict(color=INK, size=12),
-                              bgcolor="rgba(255,255,255,0.85)", **main)
+                              bgcolor="rgba(6,10,18,0.85)", **main)
     for change, (color, symbol) in CHANGE_STYLE.items():
         items = [row for row in rows if row["change"] == change]
         if items:
             figure.add_trace(go.Scatter(x=[row["date"] for row in items], y=[row["target_price"] for row in items],
                                         mode="markers", name=f"목표주가 {change}", hovertext=[_hover(row) for row in items], hoverinfo="text",
                                         marker=dict(size=13, color=color, symbol=symbol,
-                                                    line=dict(width=2, color="#ffffff" if symbol != "circle-open" else color))), **main)
+                                                    line=dict(width=2, color=RING if symbol != "circle-open" else color))), **main)
     # Leave room on the right so labels on the newest report are not clipped.
-    pad = max(timedelta(days=3), span * 0.08)
+    pad = max(timedelta(days=3), span * 0.11)
     figure.update_yaxes(tickformat=",", title=None)
     figure.update_xaxes(type="date", tickformat="%y.%m.%d", hoverformat="%Y-%m-%d", title=None, showgrid=False,
                         range=[(date.fromisoformat(first) - span * 0.01).isoformat(), (date.fromisoformat(end) + pad).isoformat()])
@@ -460,4 +472,65 @@ def history_figure(reports, ticker, history=None):
     figure.update_layout(hovermode="closest")
     _layout(figure, 720 if history else 480)
     figure.update_layout(margin=dict(l=8, r=24, t=64, b=8), legend=dict(y=0.995, yanchor="top", yref="container"))
+    return figure
+
+
+def revision_breadth(reports, as_of=None, days=30):
+    """Upgrades and downgrades of target prices within ``days`` before ``as_of``."""
+    if not reports:
+        return dict(ups=0, downs=0, share=None, start=None, end=None)
+    as_of = as_of or max(row["date"] for row in reports)
+    start = (date.fromisoformat(as_of) - timedelta(days=days)).isoformat()
+    counts = Counter(row["change"] for row in reports if start < row["date"] <= as_of)
+    total = counts[UP] + counts[DOWN]
+    return dict(ups=counts[UP], downs=counts[DOWN], share=counts[UP] / total * 100 if total else None, start=start, end=as_of)
+
+
+def breadth_figure(breadth):
+    """Gauge of the share of target revisions that were upgrades (50% = balanced)."""
+    import plotly.graph_objects as go
+    share = breadth["share"]
+    figure = go.Figure(go.Indicator(
+        mode="gauge+number", value=share if share is not None else 0,
+        number=dict(suffix="%", valueformat=".0f", font=dict(color=INK if share is not None else INK_MUTED, size=40)),
+        gauge=dict(axis=dict(range=[0, 100], tickvals=[0, 50, 100], ticktext=["하향", "균형", "상향"],
+                             tickcolor=RULE, tickfont=dict(color=INK_SECONDARY, size=11)),
+                   bar=dict(color=ACCENT, thickness=0.28), bgcolor="rgba(0,0,0,0)", borderwidth=0,
+                   steps=[dict(range=[0, 40], color="rgba(57,135,229,0.22)"), dict(range=[40, 60], color="rgba(154,164,178,0.12)"),
+                          dict(range=[60, 100], color="rgba(230,103,103,0.22)")],
+                   threshold=dict(line=dict(color=INK_SECONDARY, width=2), thickness=0.8, value=50))))
+    _layout(figure, 260)
+    figure.update_layout(margin=dict(l=64, r=64, t=28, b=8))
+    return figure
+
+
+def revision_flow_figure(reports, days=60):
+    """Daily target upgrades (up, red) and downgrades (down, blue) on one zero line."""
+    import plotly.graph_objects as go
+    end = max(row["date"] for row in reports)
+    start = (date.fromisoformat(end) - timedelta(days=days)).isoformat()
+    ups, downs = Counter(), Counter()
+    for row in reports:
+        if start < row["date"] <= end and row["change"] == UP:
+            ups[row["date"]] += 1
+        elif start < row["date"] <= end and row["change"] == DOWN:
+            downs[row["date"]] += 1
+    dates = sorted(set(ups) | set(downs))
+    figure = go.Figure()
+    figure.add_trace(go.Bar(x=dates, y=[ups[day] for day in dates], name="▲ 목표가 상향", marker=dict(color=CHANGE_STYLE[UP][0], cornerradius=4),
+                            hovertemplate="%{x}<br>상향 %{y}건<extra></extra>"))
+    figure.add_trace(go.Bar(x=dates, y=[-downs[day] for day in dates], name="▼ 목표가 하향", marker=dict(color=CHANGE_STYLE[DOWN][0], cornerradius=4),
+                            customdata=[downs[day] for day in dates], hovertemplate="%{x}<br>하향 %{customdata}건<extra></extra>"))
+    # Fixed bar width (0.6 day) so a short history does not render slab-wide bars.
+    for trace in figure.data:
+        trace.width = [86_400_000 * 0.6] * len(dates)
+    figure.update_layout(barmode="relative")
+    if len(dates) < 14:
+        # Show at least two weeks so a few days of data read as days, not slabs.
+        last = date.fromisoformat(dates[-1] if dates else end)
+        figure.update_xaxes(range=[(last - timedelta(days=14)).isoformat(), (last + timedelta(days=1)).isoformat()])
+    figure.update_xaxes(type="date", tickformat="%m.%d", showgrid=False)
+    figure.update_yaxes(zeroline=True, zerolinecolor=INK_MUTED, zerolinewidth=1, tickformat="d")
+    _layout(figure, 260)
+    figure.update_layout(margin=dict(l=8, r=16, t=40, b=8), legend=dict(y=1.12))
     return figure

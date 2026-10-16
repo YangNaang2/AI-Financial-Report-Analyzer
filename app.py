@@ -26,6 +26,67 @@ DB = os.getenv('REPORT_LENS_DB', str(DATA / 'library.sqlite3'))
 MODEL_DIR = Path(os.getenv('REPORT_LENS_MODELS_DIR', 'models'))
 PAGES = ['대시보드', '리포트 분석', '분석 상세', '리포트 비교', '종목 컨센서스', '분석 보관함', '데이터 · 모델']
 ENGINE_NAMES = {'rules':'규칙 기반', 'model':'분류 모델', 'demo':'가상 데모'}
+# Dark research-terminal look: glass panels on a faint grid, cyan accent for
+# chrome only. Data colors stay with consensus.CHANGE_STYLE (red up, blue down).
+STYLE = '''<style>
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700;800&family=JetBrains+Mono:wght@500;700&display=swap');
+:root{--bg:#060A12;--panel:rgba(14,22,38,.72);--panel-strong:rgba(17,27,46,.9);--line:rgba(56,189,248,.16);--line-strong:rgba(34,211,238,.45);
+ --ink:#E6EDF7;--ink-2:#A9B6C9;--ink-3:#6B7A90;--accent:#22D3EE;--accent-2:#818CF8;--up:#E66767;--down:#3987E5;--mono:'JetBrains Mono',ui-monospace,monospace;}
+html,body,[class*="css"],.stApp{font-family:'Noto Sans KR','Apple SD Gothic Neo','Malgun Gothic',sans-serif;}
+.stApp{background:radial-gradient(1200px 600px at 85% -10%,rgba(34,211,238,.10),transparent 60%),radial-gradient(900px 500px at -10% 110%,rgba(129,140,248,.10),transparent 60%),
+ linear-gradient(rgba(56,189,248,.035) 1px,transparent 1px),linear-gradient(90deg,rgba(56,189,248,.035) 1px,transparent 1px),var(--bg);
+ background-size:auto,auto,44px 44px,44px 44px,auto;}
+.block-container{max-width:1440px;padding-top:2.2rem;padding-bottom:4rem;}
+h1{font-size:2.2rem!important;letter-spacing:-.05rem;line-height:1.3!important;margin-bottom:.3rem!important;
+ background:linear-gradient(90deg,#F0F9FF 0%,#A5F3FC 55%,#C7D2FE 100%);-webkit-background-clip:text;background-clip:text;color:transparent!important;}
+h2,h3{letter-spacing:-.03rem;color:var(--ink);}
+.eyebrow{font-family:var(--mono);font-size:.72rem;letter-spacing:.22rem;font-weight:700;color:var(--accent);margin-bottom:.7rem;text-shadow:0 0 12px rgba(34,211,238,.55);}
+.eyebrow:before{content:'';display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--accent);margin-right:10px;box-shadow:0 0 10px var(--accent);vertical-align:1px;}
+.lede{font-size:1rem;color:var(--ink-2);line-height:1.8;margin-bottom:1.8rem;max-width:880px;}
+.brand{font-family:var(--mono);font-size:1.15rem;font-weight:700;letter-spacing:.12rem;margin-top:.2rem;color:var(--accent);text-shadow:0 0 14px rgba(34,211,238,.6);}
+.muted{font-size:.78rem;color:var(--ink-3);margin:.5rem 0 2rem;}
+[data-testid="stSidebar"]{background:linear-gradient(180deg,#08101D,#060A12);border-right:1px solid var(--line);}
+[data-testid="stMetric"],.glass{background:var(--panel);border:1px solid var(--line);border-radius:14px;backdrop-filter:blur(10px);
+ box-shadow:inset 0 1px 0 rgba(255,255,255,.04),0 0 0 1px rgba(0,0,0,.2),0 12px 40px -18px rgba(34,211,238,.35);}
+[data-testid="stMetric"]{padding:18px 20px;min-height:112px;margin-bottom:20px;}
+[data-testid="stMetricLabel"]{color:var(--ink-2)!important;}
+[data-testid="stMetricValue"]{font-family:var(--mono);font-size:1.4rem;color:var(--ink);}
+[data-testid="stPlotlyChart"]{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:6px 8px;}
+.notice{background:rgba(34,211,238,.06);border:1px solid var(--line);border-left:3px solid var(--accent);border-radius:12px;padding:20px 22px;line-height:1.8;margin:12px 0 18px;color:var(--ink-2);}
+.notice b{color:var(--ink);}
+.source{white-space:pre-wrap;overflow-wrap:anywhere;background:var(--panel-strong);color:var(--ink);border:1px solid var(--line);border-radius:0 0 12px 12px;padding:26px;line-height:1.95;max-height:800px;overflow:auto;font-size:.92rem;}
+.source-label{background:linear-gradient(90deg,rgba(34,211,238,.25),rgba(129,140,248,.18));color:var(--ink);padding:11px 20px;border-radius:12px 12px 0 0;font-family:var(--mono);font-size:.74rem;letter-spacing:.08rem;border:1px solid var(--line);border-bottom:0;}
+mark{background:rgba(34,211,238,.28);color:#F0FDFF;padding:2px 0;border-radius:2px;}
+[data-testid="stDataFrame"]{border:1px solid var(--line);border-radius:12px;}
+.stButton>button{border-radius:9px;border:1px solid var(--line-strong);background:rgba(34,211,238,.06);transition:box-shadow .2s,border-color .2s;}
+.stButton>button:hover{border-color:var(--accent);box-shadow:0 0 16px rgba(34,211,238,.35);}
+[role="tablist"]{gap:24px;border-bottom:1px solid var(--line);}
+[role="tab"][aria-selected="true"]{color:var(--accent)!important;text-shadow:0 0 10px rgba(34,211,238,.5);}
+.kpi{padding:18px 20px;min-height:118px;margin-bottom:16px;position:relative;overflow:hidden;}
+.kpi:after{content:'';position:absolute;left:0;top:0;height:2px;width:100%;background:linear-gradient(90deg,var(--accent),transparent);opacity:.7;}
+.kpi .label{font-size:.78rem;color:var(--ink-2);letter-spacing:.02rem;}
+.kpi .value{font-family:var(--mono);font-size:1.9rem;font-weight:700;color:var(--ink);margin-top:6px;line-height:1.2;}
+.kpi .sub{font-size:.76rem;color:var(--ink-3);margin-top:6px;}
+.kpi .up{color:var(--up);} .kpi .down{color:var(--down);}
+.panel-title{font-family:var(--mono);font-size:.74rem;letter-spacing:.18rem;color:var(--ink-2);margin:6px 0 10px;text-transform:uppercase;}
+.tape{position:relative;overflow:hidden;white-space:nowrap;border:1px solid var(--line);border-radius:12px;background:rgba(8,14,26,.85);padding:11px 0;margin:4px 0 22px;
+ mask-image:linear-gradient(90deg,transparent,#000 6%,#000 94%,transparent);}
+.tape .track{display:inline-block;padding-left:100%;animation:tape 60s linear infinite;}
+.tape:hover .track{animation-play-state:paused;}
+.tape .chip{display:inline-block;margin-right:34px;font-size:.88rem;color:var(--ink-2);}
+.tape .chip b{color:var(--ink);font-weight:700;margin-right:6px;} .tape .chip .num{font-family:var(--mono);}
+.tape .chip .up{color:var(--up);} .tape .chip .down{color:var(--down);}
+@keyframes tape{from{transform:translateX(0)}to{transform:translateX(-100%)}}
+@media (prefers-reduced-motion:reduce){.tape .track{animation:none;padding-left:16px;}}
+.feed-row{display:flex;align-items:center;gap:14px;padding:10px 14px;border:1px solid var(--line);border-radius:10px;background:rgba(10,17,30,.7);margin-bottom:8px;min-height:46px;}
+.feed-row.new{border-color:var(--line-strong);box-shadow:0 0 18px -6px rgba(34,211,238,.6);}
+.feed-row .date{font-family:var(--mono);font-size:.8rem;color:var(--ink-3);width:46px;}
+.feed-row .badge{font-family:var(--mono);font-size:.66rem;letter-spacing:.08rem;color:#04121A;background:var(--accent);border-radius:4px;padding:2px 6px;box-shadow:0 0 10px rgba(34,211,238,.6);}
+.feed-row .name{font-weight:700;color:var(--ink);min-width:140px;} .feed-row .broker{color:var(--ink-2);min-width:110px;font-size:.88rem;}
+.feed-row .what{flex:1;color:var(--ink-2);font-size:.9rem;} .feed-row .what .num{font-family:var(--mono);color:var(--ink);}
+.feed-row .up{color:var(--up);font-weight:700;} .feed-row .down{color:var(--down);font-weight:700;} .feed-row .flat{color:var(--ink-2);font-weight:700;}
+@media(max-width:760px){.block-container{padding-top:1.5rem;}h1{font-size:1.7rem!important;}.feed-row{flex-wrap:wrap;}}
+</style>'''
 
 @st.cache_resource
 def manager():
@@ -180,9 +241,10 @@ def start_job(owner, kind, fn):
 
 
 def dashboard(owner, lib, models):
-    title('RESEARCH WORKSPACE', '리포트의 숫자와 문맥을 함께 읽다', '문서를 모으고, 변화와 근거를 확인하고, 나만의 분석 기록을 남기세요.')
+    title('RESEARCH TERMINAL', '증권사 리포트의 흐름을 한눈에', '매일 수집한 리포트에서 목표가 변경과 컨센서스를 추적하고, 모든 숫자를 원문 근거와 함께 확인합니다.')
     if not owner.startswith('demo-'):
-        change_feed(owner)
+        market_pulse(owner)
+    st.markdown('<div class="panel-title" style="margin-top:28px">My library · 내 분석 기록</div>', unsafe_allow_html=True)
     docs = lib.list_documents(owner); rows = lib.list_analyses(owner)
     ready = [m for m in models if m['status'] == 'ready']
     cols = st.columns(4)
@@ -203,7 +265,7 @@ def dashboard(owner, lib, models):
             company = d.get('metadata',{}).get('company') or '미확인'
             counts[company] = counts.get(company,0)+1
         if counts:
-            st.bar_chart(pd.Series(counts, name='리포트 수'), color='#147D72')
+            st.bar_chart(pd.Series(counts, name='리포트 수'), color='#22D3EE')
         else:
             st.caption('기업 정보를 확인한 문서를 저장하면 기록이 나타납니다.')
     with right:
@@ -375,7 +437,7 @@ def detail_page(owner,lib):
                 st.json(segment.get('rule_hits',[]),expanded=False)
                 if any(s.get('negative_score') is not None for s in segments):
                     chart=pd.DataFrame([{'페이지':s['page'],'점수':s['negative_score']} for s in segments]).groupby('페이지')['점수'].mean()
-                    st.bar_chart(chart,color='#147D72'); st.caption('차트는 페이지 내 구간 점수의 산술 평균입니다. 문서 점수 집계는 실행 정보를 확인하세요.')
+                    st.bar_chart(chart,color='#22D3EE'); st.caption('차트는 페이지 내 구간 점수의 산술 평균입니다. 문서 점수 집계는 실행 정보를 확인하세요.')
             else:
                 segment=None; st.caption('분석 가능한 구간이 없습니다.')
         with right:
@@ -489,13 +551,57 @@ def save_watchlist(folder,key):
         st.session_state['watchlist_error']=str(exc)
 
 
-def change_feed(owner):
+def kpi(column,label,value,sub='',tone=''):
+    column.markdown(f'<div class="glass kpi"><div class="label">{html.escape(label)}</div>'
+                    f'<div class="value {tone}">{value}</div><div class="sub">{html.escape(sub)}</div></div>',unsafe_allow_html=True)
+
+
+def ticker_tape(events):
+    marks={consensus.UP:('up','▲'),consensus.DOWN:('down','▼')}
+    chips=[]
+    for e in events[:24]:
+        if e['change'] not in marks: continue
+        tone,arrow=marks[e['change']]
+        pct=f"{e['pct']:+.1f}%" if e['pct'] is not None else e['change']
+        target=e['detail'].split('→')[-1].replace('목표주가','').split('원')[0].strip()
+        chips.append(f'<span class="chip"><b>{html.escape(e["company"])}</b><span class="{tone}">{arrow}</span> '
+                     f'<span class="num">{html.escape(target)}</span> <span class="{tone} num">{html.escape(pct)}</span> · {html.escape(e["broker"])}</span>')
+    if chips:
+        st.markdown(f'<div class="tape" aria-label="최근 목표가 변경"><div class="track">{"".join(chips)}</div></div>',unsafe_allow_html=True)
+
+
+def market_pulse(owner):
     folders=collection_folders(owner)
-    if not folders: return
+    if not folders:
+        notice('수집한 리포트가 없습니다. 데이터 · 모델 화면에서 수집하거나 python main.py collect --save-dir data/reports --until-known 을 실행하면 여기에 목표가 흐름이 나타납니다.','마켓 펄스'); return
     folder=folders[0]
     reports,_=load_collection(folder)
     saved=watchlist.load(folder)
     watched=set(saved['tickers'])
+    all_events=consensus.change_events(reports)
+    unseen_all=[e for e in all_events if watchlist.is_unseen(e,saved['seen_at'])]
+    breadth=consensus.revision_breadth(reports)
+    latest=max((r.get('collected_at') or '' for r in reports),default='')
+    c=st.columns(4)
+    kpi(c[0],'추적 중인 리포트',f"{len(reports):,}",f"마지막 수집 {latest[5:16].replace('T',' ')} UTC" if latest else '')
+    kpi(c[1],'추적 종목',f"{len({r['ticker'] for r in reports}):,}",f'관심 종목 {len(watched)}개')
+    kpi(c[2],'확인 전 새 변화',f"{len(unseen_all):,}",'마지막 확인 이후 수집분','up' if unseen_all else '')
+    share='—' if breadth['share'] is None else f"{breadth['share']:.0f}%"
+    kpi(c[3],'30일 목표가 상향 비율',share,f"▲ {breadth['ups']}  ▼ {breadth['downs']} · 50%면 상향과 하향이 같음")
+    ticker_tape(all_events)
+    if reports:
+        left,right=st.columns([1.7,1],gap='medium')
+        with left:
+            st.markdown('<div class="panel-title">Revision flow · 날짜별 목표가 상향 ▲ / 하향 ▼</div>',unsafe_allow_html=True)
+            st.plotly_chart(consensus.revision_flow_figure(reports),width='stretch',config={'displayModeBar':False})
+        with right:
+            st.markdown('<div class="panel-title">Revision breadth · 최근 30일 상향 비율</div>',unsafe_allow_html=True)
+            st.plotly_chart(consensus.breadth_figure(breadth),width='stretch',config={'displayModeBar':False})
+        st.caption('증권사들이 목표가를 올리는 쪽인지 내리는 쪽인지 보여주는 집계입니다. 주가 예측이나 매매 신호가 아닙니다.')
+    change_feed(folder,reports,saved,watched)
+
+
+def change_feed(folder,reports,saved,watched):
     head,toggle=st.columns([3,1])
     head.subheader('새 변화')
     only=toggle.toggle('관심 종목만',value=bool(watched),key='feed_watch_only',disabled=not watched)
@@ -505,16 +611,18 @@ def change_feed(owner):
     st.caption(f"수집한 리포트의 목표가 상향·하향, 투자의견 변경, 커버리지 개시입니다. 확인 이후 새로 수집된 변화 {len(unseen)}건 · {seen_text}")
     if not events:
         notice('표시할 변화가 없습니다. 관심 종목을 추가하거나 수집이 쌓이면 나타납니다.' if only else '아직 목표가 변화가 없습니다. 매일 수집이 쌓이면 나타납니다.'); return
-    marks={consensus.UP:':red[▲ 상향]',consensus.DOWN:':blue[▼ 하향]',consensus.NEW:'○ 개시',None:'◆ 의견'}
+    marks={consensus.UP:('up','▲ 상향'),consensus.DOWN:('down','▼ 하향'),consensus.NEW:('flat','○ 개시'),None:('flat','◆ 의견')}
     for i,e in enumerate(events[:10]):
-        c=st.columns([0.9,1.6,1.2,3.2,0.6])
-        new='**NEW** ' if e in unseen else ''
-        c[0].markdown(f"{new}{e['date'][5:]}")
-        c[1].markdown(('★ ' if e['ticker'] in watched else '')+f"**{e['company']}**")
-        c[2].markdown(e['broker'])
+        row,action=st.columns([14,1],vertical_alignment='center')
+        tone,label=marks.get(e['change'],('flat',''))
         pct=f" ({e['pct']:+.1f}%)" if e['pct'] is not None else ''
-        c[3].markdown(f"{marks.get(e['change'],'')} {e['detail']}{pct}")
-        c[4].button('보기',key=f'feed_open_{i}',on_click=open_consensus,args=(e['ticker'],))
+        new=e in unseen
+        row.markdown(f'<div class="feed-row{" new" if new else ""}"><span class="date">{e["date"][5:]}</span>'
+                     +('<span class="badge">NEW</span>' if new else '')
+                     +f'<span class="name">{"★ " if e["ticker"] in watched else ""}{html.escape(e["company"])}</span>'
+                     f'<span class="broker">{html.escape(e["broker"])}</span><span class="{tone}">{label}</span>'
+                     f'<span class="what"><span class="num">{html.escape(e["detail"])}{pct}</span></span></div>',unsafe_allow_html=True)
+        action.button('보기',key=f'feed_open_{i}',on_click=open_consensus,args=(e['ticker'],))
     if len(events)>10:
         with st.expander(f'전체 변화 {len(events)}건'):
             st.dataframe(pd.DataFrame([{'발간일':e['date'],'종목':e['company'],'코드':e['ticker'],'증권사':e['broker'],'구분':e['kind'],'내용':e['detail'],
@@ -580,7 +688,7 @@ def consensus_page(owner,demo):
         m1.metric('평균 목표주가',f"{row['mean_target']:,}원")
         m2.metric('현재가',f"{row['price']:,.0f}원" if row['price'] else '미확인',help=f"{row['price_source']} · {row['price_date']}" if row['price'] else None)
         m3.metric('상승여력',f"{row['upside']:+.1f}%" if row['upside'] is not None else '—')
-        m4.metric('목표주가 범위',f"{row['low']:,} ~ {row['high']:,}")
+        m4.metric('목표주가 범위',f"{row['low']:,}~{row['high']:,}")
         figure=consensus.target_figure(consensus.latest_by_broker(reports,ticker,as_of,window),consensus.current_price(reports,ticker,prices))
         st.plotly_chart(figure,width='stretch',config={'displayModeBar':False})
         st.caption('가로선은 현재가(검은 세로선)에서 각 증권사 목표주가까지의 거리이고, 끝의 %가 상승여력입니다. 기호는 상승여력이 아니라 그 증권사가 직전 리포트보다 목표가를 올렸는지(▲) 내렸는지(▼)를 뜻합니다. 점에 마우스를 올리면 리포트와 근거 페이지가 보입니다.')
@@ -723,20 +831,7 @@ def model_page(owner,lib,models,demo):
 
 
 def main():
-    st.markdown('''<style>
-    html,body,[class*="css"],.stApp {font-family:'Noto Sans KR','Apple SD Gothic Neo','Malgun Gothic',sans-serif;}
-    .block-container {max-width:1440px;padding-top:2.5rem;padding-bottom:4rem;}
-    h1 {font-size:2.25rem!important;letter-spacing:-.065rem;line-height:1.35!important;margin-bottom:.3rem!important;}
-    h2,h3 {letter-spacing:-.035rem;} .eyebrow{font-size:.72rem;letter-spacing:.16rem;font-weight:700;color:#147D72;margin-bottom:.7rem;}
-    .lede{font-size:1.03rem;color:#617185;line-height:1.8;margin-bottom:2rem;}.brand{font-size:1.22rem;font-weight:800;letter-spacing:.05rem;margin-top:.2rem;}.muted{font-size:.78rem;color:#778396;margin:.5rem 0 2rem;}
-    [data-testid="stMetric"]{background:white;border:1px solid #E2E8F0;border-radius:14px;padding:18px 20px;min-height:112px;margin-bottom:20px;}
-    [data-testid="stMetricValue"]{font-size:1.8rem;} .notice{background:#EDF4F3;border:1px solid #D6E8E3;border-radius:12px;padding:22px;line-height:1.8;margin:12px 0 18px;color:#345A55;}
-    .source{white-space:pre-wrap;overflow-wrap:anywhere;background:#fff;border:1px solid #DDE4EC;border-radius:0 0 12px 12px;padding:26px;line-height:1.95;max-height:800px;overflow:auto;font-size:.92rem;}
-    .source-label{background:#182B44;color:white;padding:11px 20px;border-radius:12px 12px 0 0;font-size:.76rem;letter-spacing:.05rem;}
-    mark{background:#DDF3BC;padding:2px 0;border-radius:2px;}[data-testid="stSidebar"]{border-right:1px solid #E0E6ED;}
-    [data-testid="stDataFrame"]{border-radius:10px;} .stButton>button{border-radius:9px;} [data-baseweb="tab-list"]{gap:24px;}
-    @media(max-width:760px){.block-container{padding-top:1.5rem;}h1{font-size:1.7rem!important;}}
-    </style>''',unsafe_allow_html=True)
+    st.markdown(STYLE,unsafe_allow_html=True)
     try:
         owner,lib,demo=get_workspace()
         models=available_models(owner) if not demo else []
