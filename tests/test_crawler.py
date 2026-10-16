@@ -83,6 +83,25 @@ class CrawlerTests(unittest.TestCase):
         with mock.patch("crawler.requests.get", side_effect=[listing([zero]), Response(b"%PDF-2 test")]):
             self.assertIsNone(crawler.download_naver_reports(self.path)["downloaded"][0]["listing_target_price"])
 
+    def test_until_known_follows_pages_until_one_holds_only_collected_reports(self):
+        def item(identifier):
+            return report(identifier, f"리포트 {identifier}", attachUrl=f"https://stock.pstatic.net/{identifier}.pdf")
+
+        with mock.patch("crawler.requests.get", side_effect=[listing([item("3"), item("4")], has_next=True),
+                                                             Response(b"%PDF-3"), Response(b"%PDF-4")]):
+            crawler.download_naver_reports(self.path)
+        # Two new reports arrived on page 1 while the PC was off, pushing the
+        # known ones to page 2; page 3 must never be requested.
+        pages = [listing([item("6"), item("5")], has_next=True), Response(b"%PDF-6"), Response(b"%PDF-5"),
+                 listing([item("4"), item("3")], has_next=True)]
+        with mock.patch("crawler.requests.get", side_effect=pages) as get:
+            result = crawler.download_naver_reports(self.path, 1, 30, until_known=True)
+        self.assertEqual((result["count"], result["pages_visited"], result["stopped_at_known_page"]), (2, 2, 2))
+        self.assertEqual(get.call_count, 4)
+        with mock.patch("crawler.requests.get", side_effect=[listing([item("6"), item("5")], has_next=True)]) as get:
+            quiet = crawler.download_naver_reports(self.path, 1, 30, until_known=True)
+        self.assertEqual((quiet["count"], quiet["pages_visited"], get.call_count), (0, 1, 1))
+
     def test_identical_titles_get_distinct_sanitized_names(self):
         items = [report(str(i), "../../같은:제목", attachUrl=f"https://stock.pstatic.net/{i}.pdf") for i in (1, 2)]
         with mock.patch("crawler.requests.get", side_effect=[listing(items), Response(b"%PDF-1 test"), Response(b"%PDF-2 test")]):

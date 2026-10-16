@@ -165,8 +165,14 @@ def _listing(page):
         return reports, True
 
 
-def download_naver_reports(save_dir="./pdf_data", start_page=1, end_page=1, progress=None):
-    """Collect pages into a resume manifest, retaining origin and outcome per file."""
+def download_naver_reports(save_dir="./pdf_data", start_page=1, end_page=1, progress=None, until_known=False):
+    """Collect pages into a resume manifest, retaining origin and outcome per file.
+
+    With ``until_known`` the listing is followed newest-first only until a page
+    whose reports were all seen before, so a machine that was off for days
+    catches up without re-walking the whole range every day. ``end_page`` stays
+    the upper bound.
+    """
     if (type(start_page) is not int or type(end_page) is not int or start_page < 1
             or end_page < start_page or end_page - start_page >= 100 or end_page > 10000):
         raise CollectionError("페이지는 1~10000 범위에서 한 번에 최대 100페이지를 순서대로 지정하세요.")
@@ -194,6 +200,7 @@ def download_naver_reports(save_dir="./pdf_data", start_page=1, end_page=1, prog
         except (requests.RequestException, CollectionError, ValueError, OSError) as exc:
             result["errors"].append({"page": page, "reason": str(exc)})
             break
+        known = sum(hashlib.sha256(source["source_url"].encode()).hexdigest() in manifest["reports"] for source in reports)
         for report_index, source in enumerate(reports, 1):
             if progress:
                 progress(f"PDF {report_index}/{len(reports)} · {source['title']}")
@@ -251,6 +258,9 @@ def download_naver_reports(save_dir="./pdf_data", start_page=1, end_page=1, prog
             manifest["reports"][key] = entry
             manifest["updated_at"] = _now()
             _atomic_json(manifest_path, manifest)
+        if until_known and reports and known == len(reports):
+            result["stopped_at_known_page"] = page
+            break
         if not has_next:
             break
     if not manifest_path.exists():

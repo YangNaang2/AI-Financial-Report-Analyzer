@@ -146,6 +146,8 @@ def main(argv=None):
     collect.add_argument("--save-dir", default="./pdf_data")
     collect.add_argument("--start-page", type=int, default=1)
     collect.add_argument("--end-page", type=int, default=1)
+    collect.add_argument("--until-known", action="store_true",
+                         help="이미 수집한 리포트만 있는 페이지에서 멈춤 (--end-page는 상한)")
     collect.add_argument("--dry-run", action="store_true")
     prepare = sub.add_parser("prepare", help="로컬 문서에 관측 완료 수익률 라벨 준비")
     prepare.add_argument("--pdf-dir", default="./pdf_data")
@@ -174,7 +176,8 @@ def main(argv=None):
             from crawler import download_naver_reports
             result = ({"status": "dry_run", "start_page": args.start_page, "end_page": args.end_page,
                        "save_dir": args.save_dir} if args.dry_run else
-                      download_naver_reports(args.save_dir, args.start_page, args.end_page))
+                      download_naver_reports(args.save_dir, args.start_page, args.end_page,
+                                             until_known=args.until_known))
         elif args.command == "prepare":
             result = prepare_dataset(args.pdf_dir, window_days=args.window_days, threshold=args.threshold,
                                      entry_policy=args.entry_policy, as_of=args.as_of, dry_run=args.dry_run,
