@@ -139,7 +139,7 @@ class TrainingTests(unittest.TestCase):
         for row in rows[12:]:
             row["text"] += " 검증시험전용비밀토큰"
         result = train_model(records=rows, output_dir=self.path)
-        saved = json.loads((Path(result["model_dir"]) / "baseline_model.json").read_text())
+        saved = json.loads((Path(result["model_dir"]) / "baseline_model.json").read_text(encoding="utf-8"))
         self.assertNotIn("검증시험전용비밀토큰", saved["vocabulary"])
 
     def test_single_class_heldout_metrics_use_na_and_do_not_invent_pr_auc(self):
@@ -178,7 +178,7 @@ class TrainingTests(unittest.TestCase):
         self.assertEqual(policy["provenance"][-1]["adjustment_note"], "분할·배당 조정 여부 미확인")
         self.assertEqual(result["classifier_threshold"], result["threshold"])
         self.assertNotEqual(result["classifier_threshold"], policy["definition"]["return_threshold_pct"])
-        stored = json.loads((Path(result["model_dir"]) / "model_manifest.json").read_text())
+        stored = json.loads((Path(result["model_dir"]) / "model_manifest.json").read_text(encoding="utf-8"))
         self.assertEqual(stored["label_policy"], policy)
 
     def test_mixing_distinct_known_return_definitions_is_rejected_before_training(self):
@@ -227,7 +227,7 @@ class PipelineTests(unittest.TestCase):
             self.assertEqual(result["counts"]["pending"], 1)
             self.assertEqual(result["counts"]["unavailable"], 1)
             self.assertEqual(loader.call_count, 1)
-            self.assertEqual(json.loads((path / "dataset.json").read_text())["records"], result["records"])
+            self.assertEqual(json.loads((path / "dataset.json").read_text(encoding="utf-8"))["records"], result["records"])
             self.assertFalse((path / "models").exists())
 
     def test_empty_prepare_and_cli_dry_run_do_not_train_or_contact_network(self):

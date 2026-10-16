@@ -83,7 +83,7 @@ class CrawlerTests(unittest.TestCase):
         self.assertEqual(result["status"], "failed")
         self.assertEqual(len(result["errors"]), 2)
         self.assertEqual(list(self.path.glob("*.pdf")), [])
-        manifest = json.loads((self.path / "collection_manifest.json").read_text())
+        manifest = json.loads((self.path / "collection_manifest.json").read_text(encoding="utf-8"))
         self.assertTrue(all(row["status"] == "error" for row in manifest["reports"].values()))
 
     def test_stream_limit_is_enforced_without_content_length(self):
@@ -137,10 +137,10 @@ class CrawlerTests(unittest.TestCase):
 
     def test_bad_manifest_and_invalid_pages_preserve_original_files(self):
         manifest = self.path / "collection_manifest.json"
-        manifest.write_text("broken")
+        manifest.write_text("broken", encoding="utf-8")
         with self.assertRaises(crawler.CollectionError):
             crawler.download_naver_reports(self.path)
-        self.assertEqual(manifest.read_text(), "broken")
+        self.assertEqual(manifest.read_text(encoding="utf-8"), "broken")
         for start, end in [(0, 1), (2, 1), (True, 1), (1, 101)]:
             with self.subTest(start=start, end=end), self.assertRaises(crawler.CollectionError):
                 crawler.download_naver_reports(self.path, start, end)

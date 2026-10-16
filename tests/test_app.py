@@ -48,7 +48,7 @@ def test_text_preview_preserves_financial_data(tmp_path,monkeypatch):
 
 def test_invalid_model_is_visible_without_crashing(tmp_path,monkeypatch):
     broken=tmp_path/'models'/'broken-model';broken.mkdir(parents=True)
-    (broken/'config.json').write_text('{}')
+    (broken/'config.json').write_text('{}',encoding='utf-8')
     app=boot(tmp_path,monkeypatch)
     app.sidebar.radio[0].set_value('데이터 · 모델').run()
     assert not app.exception

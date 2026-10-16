@@ -94,8 +94,15 @@ class ConsensusTests(unittest.TestCase):
         reports, _ = consensus.load_reports(self.directory, extract=self.extract)
         latest = consensus.latest_by_broker(reports, "003490", "2026-10-16")
         target = consensus.target_figure(latest, consensus.current_price(reports, "003490"))
-        self.assertEqual({trace.name for trace in target.data}, {"상향", "신규"})
-        self.assertEqual(len(target.layout.shapes), 2)
+        self.assertEqual({trace.name for trace in target.data if trace.showlegend is not False}, {"▲ 상향", "○ 비교 없음"})
+        # One current-price line; each broker and the mean get a line from that price to the target.
+        self.assertEqual(len(target.layout.shapes), 1)
+        gaps = [trace for trace in target.data if trace.mode == "lines"]
+        self.assertEqual(sorted(tuple(trace.x) for trace in gaps), [(29450, 40000), (29450, 40500), (29450, 41000)])
+        mean = next(trace for trace in target.data if trace.marker.symbol == "diamond")
+        self.assertEqual((mean.y[0], mean.text[0]), ("<b>평균 목표 (2곳)</b>", "<b>40,500원 · +37.5%</b>"))
+        bare_target = consensus.target_figure(latest)
+        self.assertFalse([trace for trace in bare_target.data if trace.mode == "lines"])
         bare = consensus.history_figure(reports, "003490")
         self.assertIn("리포트 기재 주가", {trace.name for trace in bare.data})
         priced = consensus.history_figure(reports, "003490", [("2026-10-15", 30000.0), ("2026-10-16", 31000.0)])

@@ -80,7 +80,7 @@ def load_reports(pdf_dir, extract=None, progress=None):
         item = cache[key]
         base = dict(ticker=entry.get("ticker"), broker=entry.get("broker") or "미상",
                     date=_iso(entry.get("published_at")), title=entry.get("title") or "",
-                    filename=entry["filename"])
+                    filename=entry["filename"], collected_at=entry.get("collected_at") or "")
         target = _won(item.get("target_price"))
         if item.get("error"):
             reason = item["error"]
@@ -113,8 +113,10 @@ def annotate_changes(reports):
     The previous target printed in the report is the broker's own figure and
     wins over the collection history, which may have gaps. Without either, a
     stated "(하향)"/"유지" next to the target is used; otherwise it is new.
+    A stated "신규" (coverage initiation) keeps the 원문 표기 basis. Opinion
+    changes are only known from the collection history.
     """
-    previous = {}
+    previous, opinions = {}, {}
     annotated = []
     for report in sorted(reports, key=lambda row: (row["ticker"], row["broker"], row["date"], row["filename"])):
         key = (report["ticker"], report["broker"])
@@ -124,13 +126,43 @@ def annotate_changes(reports):
         if before is not None:
             target = report["target_price"]
             change = UP if target > before else DOWN if target < before else SAME
-        elif report.get("stated_change") in (UP, DOWN, SAME):
+        elif report.get("stated_change") in (UP, DOWN, SAME, NEW):
             change, basis = report["stated_change"], "원문 표기"
         else:
             change, basis = NEW, None
-        annotated.append(dict(report, previous_target=before, change=change, change_basis=basis))
+        annotated.append(dict(report, previous_target=before, change=change, change_basis=basis,
+                              previous_opinion=opinions.get(key)))
         previous[key] = report["target_price"]
+        if report.get("opinion"):
+            opinions[key] = report["opinion"]
     return sorted(annotated, key=lambda row: (row["date"], row["filename"]), reverse=True)
+
+
+def change_events(reports, tickers=None):
+    """Feed rows for target revisions, opinion changes and coverage initiations.
+
+    Unchanged targets are not events. ``tickers`` limits the feed. Rows are
+    newest first by publication date, then by collection time.
+    """
+    names = company_names(reports)
+    events = []
+    for row in reports:
+        if tickers is not None and row["ticker"] not in tickers:
+            continue
+        common = dict(ticker=row["ticker"], company=names.get(row["ticker"]) or row["ticker"], broker=row["broker"],
+                      date=row["date"], collected_at=row.get("collected_at") or "", page=row.get("page"),
+                      title=row["title"], basis=row.get("change_basis"))
+        before, target = row.get("previous_target"), row["target_price"]
+        if row["change"] in (UP, DOWN):
+            detail = (f"목표주가 {before:,} → {target:,}원" if before else f"목표주가 {target:,}원 ({row['change']})")
+            events.append(dict(common, kind=f"목표가 {row['change']}", change=row["change"], detail=detail,
+                               pct=(target / before - 1) * 100 if before else None))
+        elif row["change"] == NEW and row.get("change_basis") == "원문 표기":
+            events.append(dict(common, kind="커버리지 개시", change=NEW, detail=f"목표주가 {target:,}원", pct=None))
+        if row.get("previous_opinion") and row.get("opinion") and row["previous_opinion"] != row["opinion"]:
+            events.append(dict(common, kind="투자의견 변경", change=None,
+                               detail=f"투자의견 {row['previous_opinion']} → {row['opinion']}", pct=None))
+    return sorted(events, key=lambda event: (event["date"], event["collected_at"]), reverse=True)
 
 
 def company_names(reports):
@@ -231,36 +263,59 @@ def _close_on(history, day):
 
 
 def target_figure(latest, price=None):
-    """① Each broker's latest target as a dot against the current price and the mean."""
+    """① How far each broker's latest target sits from the current price.
+
+    Each row is a line from the current price to the target, so its length is
+    the upside; the mean target gets its own row on top. Marker symbols show
+    the revision against the broker's previous target, labelled as such.
+    """
     import plotly.graph_objects as go
     figure = go.Figure()
     mean = sum(row["target_price"] for row in latest) / len(latest)
     reference = price["price"] if price else None
+    mean_label = f"<b>평균 목표 ({len(latest)}곳)</b>"
+
+    def label(value, bold=False):
+        text = f"{value:,.0f}원" + (f" · {(value / reference - 1) * 100:+.1f}%" if reference else "")
+        return f"<b>{text}</b>" if bold else text
+
+    def side(value):
+        return "middle left" if reference and value < reference else "middle right"
+
+    if reference:
+        for row in latest:
+            figure.add_trace(go.Scatter(x=[reference, row["target_price"]], y=[row["broker"]] * 2, mode="lines",
+                                        line=dict(color="#c3c2b7", width=3), hoverinfo="skip", showlegend=False))
+        figure.add_trace(go.Scatter(x=[reference, mean], y=[mean_label] * 2, mode="lines",
+                                    line=dict(color=INK_SECONDARY, width=3, dash="dot"), hoverinfo="skip", showlegend=False))
     for change, (color, symbol) in CHANGE_STYLE.items():
         rows = [row for row in latest if row["change"] == change]
         if not rows:
             continue
-        labels = [f"{row['target_price']:,}" + (f" ({(row['target_price'] / reference - 1) * 100:+.1f}%)" if reference else "") for row in rows]
         figure.add_trace(go.Scatter(
             x=[row["target_price"] for row in rows], y=[row["broker"] for row in rows], mode="markers+text",
-            name=f"{change}", text=labels, textposition="middle right", textfont=dict(color=INK_SECONDARY),
+            name={UP: "▲ 상향", DOWN: "▼ 하향", SAME: "● 유지", NEW: "○ 비교 없음"}[change],
+            text=[label(row["target_price"]) for row in rows], textposition=[side(row["target_price"]) for row in rows],
+            textfont=dict(color=INK_SECONDARY), legendgroup="change", legendgrouptitle_text="직전 대비",
             marker=dict(size=14, color=color, symbol=symbol, line=dict(width=2, color="#ffffff" if symbol != "circle-open" else color)),
             hovertext=[_hover(row) for row in rows], hoverinfo="text"))
+    figure.add_trace(go.Scatter(x=[mean], y=[mean_label], mode="markers+text", showlegend=False,
+                                text=[label(mean, bold=True)], textposition=side(mean), textfont=dict(color=INK),
+                                marker=dict(size=13, color=INK, symbol="diamond", line=dict(width=2, color="#ffffff")),
+                                hovertemplate=f"평균 목표주가 {mean:,.0f}원<br>증권사 {len(latest)}곳의 최신 리포트 평균<extra></extra>"))
     values = [row["target_price"] for row in latest] + ([reference] if reference else [])
     span = max(values) - min(values) or max(values) * 0.1
-    figure.update_xaxes(range=[min(values) - span * 0.15, max(values) + span * 0.45], title=None, tickformat=",")
-    figure.update_yaxes(categoryorder="array", categoryarray=[row["broker"] for row in latest], showgrid=False)
-    lines = [(mean, f"평균 목표 {mean:,.0f}", "dash", INK_MUTED)]
+    # Room on both sides for labels that sit outside the lines.
+    figure.update_xaxes(range=[min(values) - span * 0.3, max(values) + span * 0.45], title=None, tickformat=",")
+    figure.update_yaxes(categoryorder="array", categoryarray=[row["broker"] for row in latest] + [mean_label], showgrid=False)
     if reference:
-        lines.append((reference, f"현재가 {reference:,.0f} ({price['source']} {price['date'][5:]})", "solid", INK))
-    for value, text, dash, color in lines:
-        # Put each label on the outward side of its line so the two never overlap.
-        outward = "left" if value == max(line[0] for line in lines) else "right"
-        figure.add_vline(x=value, line=dict(color=color, width=2, dash=dash))
-        figure.add_annotation(x=value, y=1, yref="paper", yanchor="bottom", xanchor=outward, text=text,
-                              showarrow=False, font=dict(color=color, size=12), xshift=4 if outward == "left" else -4)
-    _layout(figure, 150 + 46 * len(latest))
-    figure.update_layout(showlegend=len(figure.data) > 1, margin=dict(t=88), legend=dict(y=0.99, yanchor="top", yref="container"))
+        figure.add_vline(x=reference, line=dict(color=INK, width=2))
+        figure.add_annotation(x=reference, y=1, yref="paper", yanchor="bottom", xanchor="center", showarrow=False,
+                              text=f"<b>현재가 {reference:,.0f}원</b> ({price['source']} {price['date'][5:]})",
+                              font=dict(color=INK, size=12))
+    _layout(figure, 170 + 46 * (len(latest) + 1))
+    figure.update_layout(showlegend=True, margin=dict(t=88),
+                         legend=dict(y=0.99, yanchor="top", yref="container", groupclick="toggleitem"))
     return figure
 
 

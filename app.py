@@ -18,6 +18,7 @@ from jobs import JobManager, JobError
 from demo import seed_demo
 from presentation import unprocessed_ranges, expression_changes
 import consensus
+import watchlist
 
 st.set_page_config(page_title='Report Lens · 증권 리포트 분석', page_icon='◈', layout='wide')
 DATA = Path(os.getenv('REPORT_LENS_DATA_DIR', 'data'))
@@ -180,6 +181,8 @@ def start_job(owner, kind, fn):
 
 def dashboard(owner, lib, models):
     title('RESEARCH WORKSPACE', '리포트의 숫자와 문맥을 함께 읽다', '문서를 모으고, 변화와 근거를 확인하고, 나만의 분석 기록을 남기세요.')
+    if not owner.startswith('demo-'):
+        change_feed(owner)
     docs = lib.list_documents(owner); rows = lib.list_analyses(owner)
     ready = [m for m in models if m['status'] == 'ready']
     cols = st.columns(4)
@@ -465,34 +468,111 @@ def recent_closes(tickers,start):
     return consensus.load_prices(tickers,start)
 
 
+def collection_folders(owner):
+    return [p for p in (DATA/'reports',DATA/'workspaces'/owner/'reports') if (p/'collection_manifest.json').is_file()]
+
+
+def load_collection(folder):
+    return collected_targets(str(folder),(folder/'collection_manifest.json').stat().st_mtime_ns)
+
+
+def open_consensus(ticker):
+    st.session_state['consensus_ticker']=ticker
+    st.session_state['nav']='종목 컨센서스'
+
+
+def save_watchlist(folder,key):
+    try:
+        watchlist.set_tickers(folder,st.session_state[key])
+    except watchlist.WatchlistError as exc:
+        st.session_state[key]=watchlist.load(folder)['tickers']
+        st.session_state['watchlist_error']=str(exc)
+
+
+def change_feed(owner):
+    folders=collection_folders(owner)
+    if not folders: return
+    folder=folders[0]
+    reports,_=load_collection(folder)
+    saved=watchlist.load(folder)
+    watched=set(saved['tickers'])
+    head,toggle=st.columns([3,1])
+    head.subheader('새 변화')
+    only=toggle.toggle('관심 종목만',value=bool(watched),key='feed_watch_only',disabled=not watched)
+    events=consensus.change_events(reports,tickers=watched if only else None)
+    unseen=[e for e in events if watchlist.is_unseen(e,saved['seen_at'])]
+    seen_text=f"마지막 확인 {saved['seen_at'][:16].replace('T',' ')} UTC" if saved['seen_at'] else '아직 확인 기록 없음'
+    st.caption(f"수집한 리포트의 목표가 상향·하향, 투자의견 변경, 커버리지 개시입니다. 확인 이후 새로 수집된 변화 {len(unseen)}건 · {seen_text}")
+    if not events:
+        notice('표시할 변화가 없습니다. 관심 종목을 추가하거나 수집이 쌓이면 나타납니다.' if only else '아직 목표가 변화가 없습니다. 매일 수집이 쌓이면 나타납니다.'); return
+    marks={consensus.UP:':red[▲ 상향]',consensus.DOWN:':blue[▼ 하향]',consensus.NEW:'○ 개시',None:'◆ 의견'}
+    for i,e in enumerate(events[:10]):
+        c=st.columns([0.9,1.6,1.2,3.2,0.6])
+        new='**NEW** ' if e in unseen else ''
+        c[0].markdown(f"{new}{e['date'][5:]}")
+        c[1].markdown(('★ ' if e['ticker'] in watched else '')+f"**{e['company']}**")
+        c[2].markdown(e['broker'])
+        pct=f" ({e['pct']:+.1f}%)" if e['pct'] is not None else ''
+        c[3].markdown(f"{marks.get(e['change'],'')} {e['detail']}{pct}")
+        c[4].button('보기',key=f'feed_open_{i}',on_click=open_consensus,args=(e['ticker'],))
+    if len(events)>10:
+        with st.expander(f'전체 변화 {len(events)}건'):
+            st.dataframe(pd.DataFrame([{'발간일':e['date'],'종목':e['company'],'코드':e['ticker'],'증권사':e['broker'],'구분':e['kind'],'내용':e['detail'],
+                                        '변화율(%)':e['pct'],'근거':e['basis'] or '','근거 페이지':e['page'],'제목':e['title'],
+                                        '새 변화':watchlist.is_unseen(e,saved['seen_at'])} for e in events]),
+                         hide_index=True,width='stretch',column_config={'변화율(%)':st.column_config.NumberColumn(format='%+.1f')})
+    latest=max((r.get('collected_at') or '' for r in reports),default='')
+    st.button('모두 확인함으로 표시',disabled=not unseen,on_click=watchlist.mark_seen,args=(folder,latest or None),
+              help='지금까지 수집된 변화를 확인한 것으로 기록합니다. 이후 새로 수집된 변화에만 NEW가 붙습니다.')
+
+
 def consensus_page(owner,demo):
     title('CONSENSUS','목표주가와 현재가의 거리','수집한 리포트의 증권사별 목표주가를 종목 단위로 모읍니다. 종목코드·증권사·발간일은 네이버 목록 값을, 목표주가는 원문 페이지 근거와 함께 사용합니다.')
     if demo:
         notice('컨센서스는 실제로 수집한 리포트로 만듭니다. 데모를 끄고 확인하세요.'); return
-    folders=[p for p in (DATA/'reports',DATA/'workspaces'/owner/'reports') if (p/'collection_manifest.json').is_file()]
+    folders=collection_folders(owner)
     if not folders:
         notice('수집한 리포트가 없습니다. 데이터 · 모델 화면에서 수집하거나 터미널에서 python main.py collect --save-dir data/reports 를 실행하세요.','수집 필요'); return
     folder=st.selectbox('수집 폴더',folders,format_func=str) if len(folders)>1 else folders[0]
-    reports,skipped=collected_targets(str(folder),(folder/'collection_manifest.json').stat().st_mtime_ns)
+    reports,skipped=load_collection(folder)
+    names=consensus.company_names(reports)
+    saved=watchlist.load(folder)
+    key=f'watchlist_{folder}'
+    st.session_state.setdefault(key,saved['tickers'])
+    options=sorted({r['ticker'] for r in reports}|set(st.session_state[key]),key=lambda t:(names.get(t,'힣'),t))
+    st.multiselect('★ 관심 종목',options,key=key,on_change=save_watchlist,args=(folder,key),accept_new_options=True,
+                   format_func=lambda t:f"{names.get(t,'이름 미확인')} ({t})",placeholder='종목 이름으로 고르거나 6자리 종목코드를 입력',
+                   help=f'{folder / watchlist.FILENAME}에 저장되어 앱을 다시 열어도 유지됩니다.')
+    if st.session_state.pop('watchlist_error',None):
+        st.error('종목코드는 6자리 숫자로 입력하세요. 관심 종목 목록은 이전 상태로 되돌렸습니다.')
+    watched=set(st.session_state[key])
     with st.expander(f'목표주가가 없어 제외한 리포트 {len(skipped)}건'):
         st.caption('기술분석·IR 보고서처럼 원래 목표주가가 없는 문서와, 표지 형식 때문에 추출하지 못한 문서가 함께 있습니다.')
         st.dataframe(pd.DataFrame([{'발간일':r['date'],'증권사':r['broker'],'종목코드':r['ticker'],'제목':r['title'],'사유':r['reason']} for r in skipped]),hide_index=True,width='stretch')
     if not reports:
         notice('목표주가를 확인한 리포트가 없습니다. 위 제외 목록의 사유를 확인하세요.'); return
     as_of=max(r['date'] for r in reports)
-    c1,c2=st.columns(2)
+    c1,c2,c3=st.columns([2,1,1])
     window=c1.select_slider('컨센서스 기간 (발간일 기준)',options=[30,60,90,180,365],value=90,format_func=lambda d:f'최근 {d}일')
     load=c2.toggle('최신 종가 불러오기',value=True,help='FinanceDataReader로 종가를 조회합니다. 끄면 리포트에 적힌 주가를 씁니다.')
+    only=c3.toggle('관심 종목만',value=bool(watched),disabled=not watched,key='consensus_watch_only')
     tickers=tuple(sorted({r['ticker'] for r in reports}))
     start=(pd.Timestamp(min(r['date'] for r in reports))-pd.Timedelta(days=120)).date().isoformat()
     prices=recent_closes(tickers,start) if load else None
     if load and prices is None:
         st.caption('FinanceDataReader가 없어 리포트에 적힌 주가를 씁니다. 최신 종가는 pip install -r requirements-data.txt 후 사용할 수 있습니다.')
     summary=consensus.summarize(reports,prices,as_of=as_of,window_days=window)
+    if only:
+        summary=[r for r in summary if r['ticker'] in watched]
+    # Watched tickers first, keeping the broker-count order within each group.
+    summary=sorted(summary,key=lambda r:r['ticker'] not in watched)
     if not summary:
-        notice(f'최근 {window}일 안에 발간된 리포트가 없습니다. 기간을 늘려 보세요.'); return
+        notice(f'최근 {window}일 안에 발간된 {"관심 종목 " if only else ""}리포트가 없습니다. 기간을 늘리거나 관심 종목만 보기를 끄세요.'); return
     by_ticker={r['ticker']:r for r in summary}
-    ticker=st.selectbox('종목 (①·② 공통)',list(by_ticker),format_func=lambda t:f"{by_ticker[t]['company']} ({t}) · 증권사 {by_ticker[t]['brokers']}곳",key='consensus_ticker')
+    if st.session_state.get('consensus_ticker') not in by_ticker:
+        st.session_state.pop('consensus_ticker',None)
+    ticker=st.selectbox('종목 (①·② 공통)',list(by_ticker),key='consensus_ticker',
+                        format_func=lambda t:('★ ' if t in watched else '')+f"{by_ticker[t]['company']} ({t}) · 증권사 {by_ticker[t]['brokers']}곳")
     row=by_ticker[ticker]
     tabs=st.tabs(['① 목표주가 vs 현재가','② 목표주가 이력','③ 종목 한눈에 보기'])
     with tabs[0]:
@@ -503,7 +583,7 @@ def consensus_page(owner,demo):
         m4.metric('목표주가 범위',f"{row['low']:,} ~ {row['high']:,}")
         figure=consensus.target_figure(consensus.latest_by_broker(reports,ticker,as_of,window),consensus.current_price(reports,ticker,prices))
         st.plotly_chart(figure,width='stretch',config={'displayModeBar':False})
-        st.caption('▲ 상향 · ▼ 하향 · ● 유지 · ○ 비교 대상 없음. 원문에 적힌 직전 목표주가를 먼저 쓰고, 없으면 같은 증권사의 직전 수집 리포트, 그다음 원문의 상향/하향 표기를 씁니다. 점에 마우스를 올리면 근거가 보입니다.')
+        st.caption('가로선은 현재가(검은 세로선)에서 각 증권사 목표주가까지의 거리이고, 끝의 %가 상승여력입니다. 기호는 상승여력이 아니라 그 증권사가 직전 리포트보다 목표가를 올렸는지(▲) 내렸는지(▼)를 뜻합니다. 점에 마우스를 올리면 리포트와 근거 페이지가 보입니다.')
     with tabs[1]:
         st.plotly_chart(consensus.history_figure(reports,ticker,(prices or {}).get(ticker)),width='stretch',config={'displayModeBar':False})
         st.caption('회색 계단선은 증권사별 목표주가가 유지된 구간입니다. 리포트가 쌓일수록 목표주가가 주가를 앞서는지 뒤쫓는지 보입니다.')
@@ -511,7 +591,7 @@ def consensus_page(owner,demo):
                                     '투자의견':r['opinion'] or '미확인','근거 페이지':r['page'],'원문':r['source'],'제목':r['title']} for r in reports if r['ticker']==ticker]).astype({'직전':'Int64'}),
                      hide_index=True,width='stretch',column_config={'목표주가':st.column_config.NumberColumn(format='localized'),'직전':st.column_config.NumberColumn(format='localized')})
     with tabs[2]:
-        table=pd.DataFrame([{'종목':r['company'],'코드':r['ticker'],'현재가':r['price'],'가격 기준':r['price_source'],'평균 목표가':r['mean_target'],
+        table=pd.DataFrame([{'★':'★' if r['ticker'] in watched else '','종목':r['company'],'코드':r['ticker'],'현재가':r['price'],'가격 기준':r['price_source'],'평균 목표가':r['mean_target'],
                              '상승여력(%)':r['upside'],'증권사':r['brokers'],'최근 30일':f"▲{r['ups']} ▼{r['downs']}",'최근 리포트':r['latest_date'],
                              '추이':[close for _,close in (prices or {}).get(r['ticker'],[])[-60:]]} for r in summary])
         if not prices: table=table.drop(columns=['추이'])
@@ -615,7 +695,7 @@ def model_page(owner,lib,models,demo):
         saved=workdir/'dataset.json'
         if not dataset and saved.exists():
             try:
-                dataset=json.loads(saved.read_text());st.session_state['dataset']=dataset
+                dataset=json.loads(saved.read_text(encoding='utf-8'));st.session_state['dataset']=dataset
             except (ValueError,OSError): st.warning('저장된 데이터 파일을 읽을 수 없습니다.')
         if dataset:
             records=dataset.get('records',[]);st.json({k:v for k,v in dataset.items() if k!='records'})

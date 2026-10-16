@@ -94,7 +94,7 @@ class InferenceTests(unittest.TestCase):
         os.utime(older, (2_000_000_000, 2_000_000_000))
         checkpoint = Path(self.directory.name) / "checkpoint-incomplete"
         checkpoint.mkdir()
-        (checkpoint / "config.json").write_text("{}")
+        (checkpoint / "config.json").write_text("{}", encoding="utf-8")
         models = inference.list_models(self.directory.name)
         self.assertEqual(inference.get_latest_model_path(self.directory.name), str(newer.resolve()))
         self.assertEqual(next(model for model in models if model["id"] == "checkpoint-incomplete")["status"], "invalid")
@@ -102,10 +102,10 @@ class InferenceTests(unittest.TestCase):
     def test_unfinished_or_ambiguous_label_models_are_invalid(self):
         path = write_baseline(self.directory.name)
         manifest_path = path / "model_manifest.json"
-        manifest = json.loads(manifest_path.read_text())
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
         for change in (dict(completed=False), dict(id2label={"0": "LABEL_0", "1": "LABEL_1"}), dict(negative_id=None), dict(preprocessing_version="1")):
             with self.subTest(change=change):
-                manifest_path.write_text(json.dumps(dict(manifest, **change)))
+                manifest_path.write_text(json.dumps(dict(manifest, **change)), encoding="utf-8")
                 self.assertEqual(inference.list_models(self.directory.name)[0]["status"], "invalid")
                 with self.assertRaises(inference.InferenceError):
                     inference.analyze_document(document_from_text("실적 부진"), engine="model", model_path=path)
@@ -115,7 +115,7 @@ class InferenceTests(unittest.TestCase):
             with self.subTest(bad_file=bad_file):
                 path = write_baseline(self.directory.name, bad_file.replace(".", "-"))
                 manifest_path = path / "model_manifest.json"
-                manifest = json.loads(manifest_path.read_text())
+                manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
                 manifest["model_type"] = "transformer"
                 payloads = {"config.json": b"{}", "tokenizer_config.json": b"{}", "tokenizer.json": b"{}"}
                 payloads["model.safetensors" if bad_file == "config.json" else "model.safetensors.index.json"] = b"placeholder"
@@ -123,7 +123,7 @@ class InferenceTests(unittest.TestCase):
                 for name, value in payloads.items():
                     (path / name).write_bytes(value)
                 manifest["files"] = {name: sha256(value).hexdigest() for name, value in payloads.items()}
-                manifest_path.write_text(json.dumps(manifest))
+                manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
                 result = next(model for model in inference.list_models(self.directory.name) if model["id"] == path.name)
                 self.assertEqual(result["status"], "invalid")
                 self.assertIn("형식", result["reason"])
@@ -133,15 +133,15 @@ class InferenceTests(unittest.TestCase):
         document = document_from_text("실적 부진")
         first = inference.analyze_document(document, engine="model", model_path=path)
         weights = path / "baseline_model.json"
-        payload = json.loads(weights.read_text())
+        payload = json.loads(weights.read_text(encoding="utf-8"))
         payload["coef"] = [-5.0] * 4
-        weights.write_text(json.dumps(payload))
+        weights.write_text(json.dumps(payload), encoding="utf-8")
         with self.assertRaisesRegex(inference.InferenceError, "체크섬"):
             inference.analyze_document(document, engine="model", model_path=path)
         manifest_path = path / "model_manifest.json"
-        manifest = json.loads(manifest_path.read_text())
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
         manifest["files"]["baseline_model.json"] = sha256(weights.read_bytes()).hexdigest()
-        manifest_path.write_text(json.dumps(manifest))
+        manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
         second = inference.analyze_document(document, engine="model", model_path=path)
         self.assertNotEqual(first["model_fingerprint"], second["model_fingerprint"])
         self.assertNotEqual(first["metrics"]["negative_score"], second["metrics"]["negative_score"])
