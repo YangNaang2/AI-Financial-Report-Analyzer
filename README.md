@@ -67,6 +67,17 @@ python main.py prepare --pdf-dir data/reports --output data/dataset.json --windo
 python main.py train --records data/dataset.json --output-dir models --backend baseline
 ```
 
+### 종목 컨센서스와 매일 수집
+
+`data/reports`에 수집한 리포트는 **종목 컨센서스** 화면에서 증권사별 목표주가·상승여력·목표주가 이력으로 볼 수 있습니다. 종목코드·증권사·발간일은 네이버 목록 값을, 목표주가·직전 목표주가·상향/하향 표기는 PDF 원문과 페이지 근거를 사용합니다. 추출 정확도는 `python audit_extraction.py --pdf-dir data/reports`로 점검합니다.
+
+Windows에서는 `collect_daily.cmd`를 작업 스케줄러에 등록해 매일 1~5페이지를 수집하고 목표주가 캐시를 미리 만들 수 있습니다. 기록은 `data/collect_daily.log`에 남습니다.
+
+```powershell
+$action = New-ScheduledTaskAction -Execute 'cmd.exe' -Argument "/c `"$PWD\collect_daily.cmd`"" -WorkingDirectory $PWD
+Register-ScheduledTask -TaskName 'ReportLens Daily Collect' -Action $action -Trigger (New-ScheduledTaskTrigger -Daily -At '18:30') -Settings (New-ScheduledTaskSettingsSet -StartWhenAvailable)
+```
+
 네이버의 현재 공개 리서치 목록/상세 API를 사용하며 요청 타임아웃, 제한된 재시도, 속도 제한, PDF 확인, URL 기반 파일명, 체크섬 및 파일별 재개 기록을 남깁니다. 수집 실패는 성공으로 세지 않습니다. 원본 발행사의 이용 조건을 확인하고 보고서를 재배포하지 마세요.
 
 라벨 기본값은 **발간일 다음 거래일 종가 진입 → 발간일+30달력일 이상인 첫 거래일 종가 종료**, 수익률 **-5% 이하가 클래스 1**입니다. 관측 기준일 이후 데이터는 제외합니다. 아직 관측되지 않았거나 가격이 없으면 미라벨 상태를 유지합니다. 실제 사용 날짜·가격·출처·조정 정책·설정을 저장합니다. 발간일 종가 진입이 필요한 실험에서는 `--entry-policy report_day`를 명시합니다. 거래일 수 기반 윈도우는 현재 지원하지 않습니다.

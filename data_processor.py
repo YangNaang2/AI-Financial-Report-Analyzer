@@ -7,6 +7,9 @@ from pathlib import Path
 import re
 
 EXTRACTION_VERSION = "2"
+# Header metadata rules change independently of the text/chunking that trained
+# models depend on, so they carry their own version for caches.
+METADATA_VERSION = "2"
 DEFAULT_MAX_BYTES = 20 * 1024 * 1024
 
 
@@ -44,12 +47,42 @@ def _date_value(value):
         return None
 
 
+def _english_date(value):
+    months = ("jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec")
+    match = re.search(r"\b(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+(\d{1,2}),?\s+(\d{4})\b", value, re.I)
+    if not match:
+        return None
+    try:
+        return date(int(match[3]), months.index(match[1].lower()) + 1, int(match[2])).isoformat()
+    except ValueError:
+        return None
+
+
+BROKERS = ("미래에셋증권", "삼성증권", "한국투자증권", "NH투자증권", "KB증권", "신한투자증권",
+           "하나증권", "키움증권", "대신증권", "한화투자증권", "유안타증권", "메리츠증권",
+           "유진투자증권", "현대차증권", "교보증권", "IBK투자증권", "SK증권", "LS증권", "iM증권",
+           "DS투자증권", "DB증권", "DB금융투자", "BNK투자증권", "다올투자증권", "부국증권", "상상인증권",
+           "케이프투자증권", "한양증권", "흥국증권", "카카오페이증권", "토스증권", "리딩투자증권", "Kiwoom Securities")
+OPINION_WORDS = (r"Strong\s*Buy|Trading\s*Buy|Buy|Outperform|Overweight|Hold|Neutral|Marketperform|"
+                 r"Underperform|Underweight|Reduce|Sell|Not\s*Rated|매수|중립|보유|매도")
+OPINION_CLASSES = {"strongbuy": "BUY", "tradingbuy": "BUY", "buy": "BUY", "outperform": "BUY", "overweight": "BUY",
+                   "매수": "BUY", "hold": "HOLD", "neutral": "HOLD", "marketperform": "HOLD", "중립": "HOLD",
+                   "보유": "HOLD", "underperform": "SELL", "underweight": "SELL", "reduce": "SELL", "sell": "SELL",
+                   "매도": "SELL", "notrated": "NR"}
+# Stated revision next to a target price, e.g. "목표주가 (하향)", "24,000원 (M)", "TP 42,000원 유지".
+TARGET_CHANGES = (("상향", r"상향|\((?:U|Up|Upgrade|Raise)\)|▲"), ("하향", r"하향|\((?:D|Down|Downgrade|Cut)\)|▼"),
+                  ("유지", r"유지|\((?:M|Maintain|Unchanged)\)"), ("신규", r"신규|\((?:I|Initiate|New)\)"))
+
+
+def opinion_class(value):
+    """Group equivalent opinions (BUY, Buy, 매수) so they do not count as a conflict."""
+    return OPINION_CLASSES.get(re.sub(r"\s+", "", str(value or "")).lower())
+
+
 def _metadata(pages):
-    candidates = {key: [] for key in ("company", "ticker", "broker", "report_date", "opinion", "target_price", "current_price")}
+    candidates = {key: [] for key in ("company", "ticker", "broker", "report_date", "opinion", "target_price",
+                                      "current_price", "target_change", "previous_target_price")}
     parse_warnings = []
-    brokers = ("미래에셋증권", "삼성증권", "한국투자증권", "NH투자증권", "KB증권", "신한투자증권",
-               "하나증권", "키움증권", "대신증권", "한화투자증권", "유안타증권", "메리츠증권",
-               "유진투자증권", "현대차증권", "교보증권", "IBK투자증권", "SK증권", "LS증권")
 
     def add(key, value, page, excerpt, unit=None):
         if value:
@@ -57,8 +90,9 @@ def _metadata(pages):
 
     # Metadata belongs to the report header, not historical figures in its body.
     for page in pages[:2]:
-        for line in page["text"].splitlines()[:35]:
+        for index, line in enumerate(page["text"].splitlines()[:35]):
             number = page["number"]
+            cover = number == 1 and index < 15
             pair = re.search(r"([가-힣A-Za-z][가-힣A-Za-z0-9& .·-]{0,35})\s*\(([0-9]{6})(?:\.(?:KS|KQ))?\)", line)
             if pair:
                 add("company", pair[1], number, line)
@@ -66,27 +100,44 @@ def _metadata(pages):
             explicit = re.search(r"(?:종목코드|티커|Ticker)\s*[:：]?\s*([0-9]{6})(?![0-9])", line, re.I)
             if explicit:
                 add("ticker", explicit[1], number, line)
+            # Codes printed without a company name: "BUY (유지) (003490)" or "462870" on its own line.
+            for code in re.findall(r"\(\s*A?([0-9]{6})(?:\.K[SQ])?\s*\)", line):
+                add("ticker", code, number, line)
+            bare = re.fullmatch(r"\s*A?([0-9]{6})\s*", line) if cover else None
+            if bare:
+                add("ticker", bare[1], number, line)
             explicit = re.search(r"(?:기업명|종목명)\s*[:：]\s*(.{1,40})$", line)
             if explicit:
                 add("company", explicit[1], number, line)
-            for broker in brokers:
+            for broker in BROKERS:
                 if broker in line:
                     add("broker", broker, number, line)
             if re.search(r"발간일|발행일|작성일|보고서일|Report\s*Date|^Date\b", line, re.I):
                 add("report_date", _date_value(line), number, line)
-            elif page["number"] == 1 and re.fullmatch(r"\s*\d{4}\s*[./년-]\s*\d{1,2}\s*[./월-]\s*\d{1,2}\s*일?\s*", line):
+            elif number == 1 and re.fullmatch(r"\s*\d{4}\s*[./년-]\s*\d{1,2}\s*[./월-]\s*\d{1,2}\s*일?\s*", line):
                 add("report_date", _date_value(line), number, line)
-            opinion = re.search(r"(?:투자의견|Investment\s*Opinion)\s*[:：]?\s*(Strong\s*Buy|Buy|Hold|Sell|매수|중립|매도|보유)", line, re.I)
+            elif cover and len(line) <= 60:
+                # Cover lines such as "2026년 10월 16일 I 기업분석" or "Company Report 2026.10.16".
+                add("report_date", _date_value(line) or _english_date(line), number, line)
+            opinion = re.search(rf"(?:투자의견|Investment\s*Opinion)\s*[:：]?\s*({OPINION_WORDS})(?![A-Za-z가-힣])", line, re.I)
             if opinion:
                 add("opinion", opinion[1], number, line)
-            for key, label in (("target_price", r"목표\s*주가|Target\s*Price"),
-                               ("current_price", r"현재\s*(?:주가|가)|Current\s*Price")):
-                match = re.search(
+            elif cover:
+                # Covers usually print the opinion alone: "BUY (유지)", "BUY(Maintain)".
+                standalone = re.match(rf"\s*({OPINION_WORDS})(?=\s|\(|$)", line, re.I)
+                if standalone:
+                    add("opinion", standalone[1], number, line)
+            for key, label in (("target_price", r"목표\s*주가|Target\s*Price|(?<![A-Za-z])TP(?![A-Za-z])"),
+                               ("current_price", r"현재\s*(?:주가|가)|Current\s*Price|(?<![가-힣A-Za-z])주가(?=\s*\()")):
+                found = False
+                for match in re.finditer(
                     rf"(?:{label})\s*(?:\((?P<label_unit>[^)]{{0,25}})\))?\s*[:：]?\s*"
                     r"(?P<prefix>KRW|USD|\$)?\s*(?P<value>(?:[0-9]{1,3}(?:,[0-9]{3})+|[0-9]+)(?:\.[0-9]+)?)(?![0-9,.])"
                     r"[ \t]*(?P<unit>백만\s*원|천\s*원|만\s*원|원|KRW|USD|달러|\$)?(?![0-9A-Za-z가-힣,.])", line, re.I,
-                )
-                if match and Decimal(match["value"].replace(",", "")) > 0:
+                ):
+                    if Decimal(match["value"].replace(",", "")) <= 0:
+                        continue
+                    found = True
                     if re.match(r"\s*[0-9][0-9,.]*\s*(?:조\s*원|억\s*원|백만\s*원|천\s*원|만\s*원|원)", line[match.end():]):
                         parse_warnings.append(f"{key}: 복합 금액 표현은 원문에서 직접 확인하세요.")
                         continue
@@ -97,13 +148,29 @@ def _metadata(pages):
                     if unit:
                         unit = re.sub(r"\s+", "", unit)
                     value = match["value"].replace(",", "")
-                    add(key, f"{value} {unit}" if unit else value, number, line, unit=unit or "미확인")
-                elif re.search(rf"(?:{label}).*[0-9]", line, re.I):
+                    # "직전 목표주가 24,000원" is the previous target, not a second candidate.
+                    previous = key == "target_price" and re.search(r"(?:직전|이전|기존|종전|Previous|Prior|Old)\s*$",
+                                                                    line[max(0, match.start() - 12):match.start()], re.I)
+                    add("previous_target_price" if previous else key, f"{value} {unit}" if unit else value,
+                        number, line, unit=unit or "미확인")
+                    if key == "target_price" and not previous:
+                        nearby = (match["label_unit"] or "") + " " + line[match.end():match.end() + 16]
+                        stated = next((name for name, pattern in TARGET_CHANGES if re.search(pattern, nearby, re.I)), None)
+                        add("target_change", stated, number, line)
+                if not found and re.search(rf"(?:{label}).*[0-9]", line, re.I):
                     parse_warnings.append(f"{key}: 숫자와 단위 형식이 불명확해 자동 입력하지 않았습니다.")
     values, evidence, warnings = {}, {}, parse_warnings
+    prices = ("target_price", "current_price", "previous_target_price")
     for key, matches in candidates.items():
-        unique = {value for value, _, _, _ in matches}
-        values[key] = next(iter(unique)) if len(unique) == 1 else None
+        if key == "opinion":
+            unique = {opinion_class(value) or value for value, _, _, _ in matches}
+        elif key in prices:
+            # A unit-less table cell repeating the cover's "41,000원" is the same figure.
+            unique = {value.split()[0] for value, _, _, _ in matches}
+            matches = sorted(matches, key=lambda match: match[3] == "미확인")
+        else:
+            unique = {value for value, _, _, _ in matches}
+        values[key] = matches[0][0] if len(unique) == 1 else None
         if len(unique) == 1:
             value, page, excerpt, unit = matches[0]
             evidence[key] = dict(page=page, text=excerpt)

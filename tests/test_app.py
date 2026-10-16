@@ -16,7 +16,7 @@ def boot(tmp_path,monkeypatch):
 def test_model_free_empty_workspace_and_every_page(tmp_path,monkeypatch):
     app=boot(tmp_path,monkeypatch)
     assert any(m.label=='준비된 모델' and m.value=='0' for m in app.metric)
-    for page in ['리포트 분석','분석 상세','리포트 비교','분석 보관함','데이터 · 모델']:
+    for page in ['리포트 분석','분석 상세','리포트 비교','종목 컨센서스','분석 보관함','데이터 · 모델']:
         app.sidebar.radio[0].set_value(page).run()
         assert not app.exception, (page,list(app.exception))
     assert any(b.label=='CPU 기준선 학습 · 평가 시작' and b.disabled for b in app.button)
@@ -27,7 +27,7 @@ def test_demo_navigation_and_isolation(tmp_path,monkeypatch):
     app.sidebar.toggle[0].set_value(True).run()
     assert not app.exception
     assert any(m.label=='보관한 리포트' and m.value=='3' for m in app.metric)
-    for page in ['분석 상세','리포트 비교','분석 보관함','데이터 · 모델']:
+    for page in ['분석 상세','리포트 비교','종목 컨센서스','분석 보관함','데이터 · 모델']:
         app.sidebar.radio[0].set_value(page).run()
         assert not app.exception, (page,list(app.exception))
     app.sidebar.toggle[0].set_value(False).run()

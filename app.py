@@ -17,12 +17,13 @@ from exports import analyses_to_csv, analyses_to_json, analysis_to_html
 from jobs import JobManager, JobError
 from demo import seed_demo
 from presentation import unprocessed_ranges, expression_changes
+import consensus
 
 st.set_page_config(page_title='Report Lens · 증권 리포트 분석', page_icon='◈', layout='wide')
 DATA = Path(os.getenv('REPORT_LENS_DATA_DIR', 'data'))
 DB = os.getenv('REPORT_LENS_DB', str(DATA / 'library.sqlite3'))
 MODEL_DIR = Path(os.getenv('REPORT_LENS_MODELS_DIR', 'models'))
-PAGES = ['대시보드', '리포트 분석', '분석 상세', '리포트 비교', '분석 보관함', '데이터 · 모델']
+PAGES = ['대시보드', '리포트 분석', '분석 상세', '리포트 비교', '종목 컨센서스', '분석 보관함', '데이터 · 모델']
 ENGINE_NAMES = {'rules':'규칙 기반', 'model':'분류 모델', 'demo':'가상 데모'}
 
 @st.cache_resource
@@ -454,6 +455,72 @@ def compare_page(owner,lib):
             st.button('분석 상세에서 원문 열기',key='open_'+row['id']+('left' if row is ar else 'right'),on_click=go,args=('분석 상세',row['id']))
 
 
+@st.cache_data(show_spinner='수집한 PDF에서 목표주가를 추출하는 중 · 처음 한 번만 오래 걸립니다')
+def collected_targets(folder,revision):
+    return consensus.load_reports(folder)
+
+
+@st.cache_data(ttl=3600,show_spinner='최신 종가를 불러오는 중')
+def recent_closes(tickers,start):
+    return consensus.load_prices(tickers,start)
+
+
+def consensus_page(owner,demo):
+    title('CONSENSUS','목표주가와 현재가의 거리','수집한 리포트의 증권사별 목표주가를 종목 단위로 모읍니다. 종목코드·증권사·발간일은 네이버 목록 값을, 목표주가는 원문 페이지 근거와 함께 사용합니다.')
+    if demo:
+        notice('컨센서스는 실제로 수집한 리포트로 만듭니다. 데모를 끄고 확인하세요.'); return
+    folders=[p for p in (DATA/'reports',DATA/'workspaces'/owner/'reports') if (p/'collection_manifest.json').is_file()]
+    if not folders:
+        notice('수집한 리포트가 없습니다. 데이터 · 모델 화면에서 수집하거나 터미널에서 python main.py collect --save-dir data/reports 를 실행하세요.','수집 필요'); return
+    folder=st.selectbox('수집 폴더',folders,format_func=str) if len(folders)>1 else folders[0]
+    reports,skipped=collected_targets(str(folder),(folder/'collection_manifest.json').stat().st_mtime_ns)
+    with st.expander(f'목표주가가 없어 제외한 리포트 {len(skipped)}건'):
+        st.caption('기술분석·IR 보고서처럼 원래 목표주가가 없는 문서와, 표지 형식 때문에 추출하지 못한 문서가 함께 있습니다.')
+        st.dataframe(pd.DataFrame([{'발간일':r['date'],'증권사':r['broker'],'종목코드':r['ticker'],'제목':r['title'],'사유':r['reason']} for r in skipped]),hide_index=True,width='stretch')
+    if not reports:
+        notice('목표주가를 확인한 리포트가 없습니다. 위 제외 목록의 사유를 확인하세요.'); return
+    as_of=max(r['date'] for r in reports)
+    c1,c2=st.columns(2)
+    window=c1.select_slider('컨센서스 기간 (발간일 기준)',options=[30,60,90,180,365],value=90,format_func=lambda d:f'최근 {d}일')
+    load=c2.toggle('최신 종가 불러오기',value=True,help='FinanceDataReader로 종가를 조회합니다. 끄면 리포트에 적힌 주가를 씁니다.')
+    tickers=tuple(sorted({r['ticker'] for r in reports}))
+    start=(pd.Timestamp(min(r['date'] for r in reports))-pd.Timedelta(days=120)).date().isoformat()
+    prices=recent_closes(tickers,start) if load else None
+    if load and prices is None:
+        st.caption('FinanceDataReader가 없어 리포트에 적힌 주가를 씁니다. 최신 종가는 pip install -r requirements-data.txt 후 사용할 수 있습니다.')
+    summary=consensus.summarize(reports,prices,as_of=as_of,window_days=window)
+    if not summary:
+        notice(f'최근 {window}일 안에 발간된 리포트가 없습니다. 기간을 늘려 보세요.'); return
+    by_ticker={r['ticker']:r for r in summary}
+    ticker=st.selectbox('종목 (①·② 공통)',list(by_ticker),format_func=lambda t:f"{by_ticker[t]['company']} ({t}) · 증권사 {by_ticker[t]['brokers']}곳",key='consensus_ticker')
+    row=by_ticker[ticker]
+    tabs=st.tabs(['① 목표주가 vs 현재가','② 목표주가 이력','③ 종목 한눈에 보기'])
+    with tabs[0]:
+        m1,m2,m3,m4=st.columns(4)
+        m1.metric('평균 목표주가',f"{row['mean_target']:,}원")
+        m2.metric('현재가',f"{row['price']:,.0f}원" if row['price'] else '미확인',help=f"{row['price_source']} · {row['price_date']}" if row['price'] else None)
+        m3.metric('상승여력',f"{row['upside']:+.1f}%" if row['upside'] is not None else '—')
+        m4.metric('목표주가 범위',f"{row['low']:,} ~ {row['high']:,}")
+        figure=consensus.target_figure(consensus.latest_by_broker(reports,ticker,as_of,window),consensus.current_price(reports,ticker,prices))
+        st.plotly_chart(figure,width='stretch',config={'displayModeBar':False})
+        st.caption('▲ 상향 · ▼ 하향 · ● 유지 · ○ 비교 대상 없음. 원문에 적힌 직전 목표주가를 먼저 쓰고, 없으면 같은 증권사의 직전 수집 리포트, 그다음 원문의 상향/하향 표기를 씁니다. 점에 마우스를 올리면 근거가 보입니다.')
+    with tabs[1]:
+        st.plotly_chart(consensus.history_figure(reports,ticker,(prices or {}).get(ticker)),width='stretch',config={'displayModeBar':False})
+        st.caption('회색 계단선은 증권사별 목표주가가 유지된 구간입니다. 리포트가 쌓일수록 목표주가가 주가를 앞서는지 뒤쫓는지 보입니다.')
+        st.dataframe(pd.DataFrame([{'발간일':r['date'],'증권사':r['broker'],'목표주가':r['target_price'],'직전':r['previous_target'],'변화':r['change'],'변화 근거':r['change_basis'] or '',
+                                    '투자의견':r['opinion'] or '미확인','근거 페이지':r['page'],'원문':r['source'],'제목':r['title']} for r in reports if r['ticker']==ticker]).astype({'직전':'Int64'}),
+                     hide_index=True,width='stretch',column_config={'목표주가':st.column_config.NumberColumn(format='localized'),'직전':st.column_config.NumberColumn(format='localized')})
+    with tabs[2]:
+        table=pd.DataFrame([{'종목':r['company'],'코드':r['ticker'],'현재가':r['price'],'가격 기준':r['price_source'],'평균 목표가':r['mean_target'],
+                             '상승여력(%)':r['upside'],'증권사':r['brokers'],'최근 30일':f"▲{r['ups']} ▼{r['downs']}",'최근 리포트':r['latest_date'],
+                             '추이':[close for _,close in (prices or {}).get(r['ticker'],[])[-60:]]} for r in summary])
+        if not prices: table=table.drop(columns=['추이'])
+        st.dataframe(table,hide_index=True,width='stretch',column_config={
+            '현재가':st.column_config.NumberColumn(format='localized'),'평균 목표가':st.column_config.NumberColumn(format='localized'),
+            '상승여력(%)':st.column_config.NumberColumn(format='%+.1f'),'추이':st.column_config.LineChartColumn('최근 60거래일')})
+        st.caption(f'기준일 {as_of} · 증권사별 최신 리포트만 평균합니다. 상승여력은 평균 목표가와 현재가의 차이이며 투자 권고가 아닙니다.')
+
+
 def library_page(owner,lib):
     title('YOUR LIBRARY','분석 보관함','보고서를 검색하고 검토 메모와 즐겨찾기를 관리하세요.')
     c1,c2,c3=st.columns([2,1,1]);q=c1.text_input('기업·파일·본문 검색');favorites=c2.checkbox('즐겨찾기만');engine=c3.selectbox('분석 방식',['전체','rules','model','demo'],format_func=lambda x:ENGINE_NAMES.get(x,x))
@@ -599,6 +666,7 @@ def main():
         elif page=='리포트 분석': analysis_page(owner,lib,models,demo)
         elif page=='분석 상세': detail_page(owner,lib)
         elif page=='리포트 비교': compare_page(owner,lib)
+        elif page=='종목 컨센서스': consensus_page(owner,demo)
         elif page=='분석 보관함': library_page(owner,lib)
         elif page=='데이터 · 모델': model_page(owner,lib,models,demo)
     except (LibraryError,ValueError,OSError) as exc:
